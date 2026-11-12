@@ -44,3 +44,9 @@ The single GitHub Actions workflow runs every language on push and PR: Node
 18/22, Python 3.9/3.13, Go 1.21, PHP 8.1, and Ruby 3.1. These minimum-version
 CI runs remain subject to GitHub execution after push; this report claims local
 results only. No package registry publication or registry credentials were added.
+
+
+Initial GitHub CI confirmed Node 18/22, Go 1.21, PHP 8.1 and Ruby 3.1 passed.
+Python 3.9 setup failed before tests because `ubuntu-latest` resolved to Ubuntu
+26.04 with no Python 3.9 binary; Python's matrix now uses Ubuntu 22.04 and
+independent matrix results. The corrected run is tracked in the draft PR.

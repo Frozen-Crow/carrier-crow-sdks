@@ -20,8 +20,10 @@ jobs:
       - run: npm run build
         working-directory: node
   python:
-    runs-on: ubuntu-latest
+    # Python 3.9 binaries are available on this runner, unlike Ubuntu 26.04.
+    runs-on: ubuntu-22.04
     strategy:
+      fail-fast: false
       matrix:
         python: ["3.9", "3.13"]
     steps:
