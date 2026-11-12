@@ -31,9 +31,11 @@ log.Print(result.Recipients)
 All HTTP methods accept a context. Configure the endpoint, HTTP client, and retries with
 `cc.New("ccm_...", cc.Options{BaseURL: "http://localhost:3000", MaxRetries: 2})`.
 The default endpoint is `https://api.mta.carriercrow.com`, the HTTP timeout is 30 seconds,
-and the default retry limit is two additional attempts. Set `MaxRetries: -1` to disable
-retries. Responses 429 and 503, and network errors, retry with exponential backoff and
-jitter; `Retry-After` seconds are a minimum delay. Cancellation interrupts retry waits.
+and `MaxRetries: 0` selects the default of two additional attempts. Set
+`DisableRetries: true` to disable retries (`MaxRetries: -1` also works). Responses 429 and 503, and network errors, retry with exponential backoff and
+jitter; `Retry-After` seconds are a minimum delay. Cancellation interrupts retry waits. `MaxRetryAfter` defaults to `60 * time.Second`;
+if the server requests a longer delay, the call returns immediately with the original
+`Error.RetryAfter` instead of retrying.
 Sends and batches without an idempotency key make one attempt. Use
 `cc.SendOptions{Retry: true}` to generate a random key and safely retry that operation.
 Reuse your own key across separate calls when recovering an uncertain outcome.
@@ -80,7 +82,9 @@ if errors.As(err, &apiErr) {
 ```
 
 Import `errors` for this example. Local and network failures have status zero;
-`errors.Is` also reaches underlying context and transport errors.
+`errors.Is` also reaches underlying context and transport errors. If no key is supplied
+or found in the environment, the first request returns `missing_api_key` without
+sending HTTP traffic.
 
 Webhook verification uses the original HTTP request bytes, including whitespace and
 UTF-8, and the entire `whsec_...` secret:
@@ -95,7 +99,8 @@ log.Print(event.Delivery, event.Events)
 
 Import `io` in your handler. `Verify` returns a typed `*cc.Error` on invalid signatures,
 stale timestamps, or invalid JSON. It supports multiple `v1` signatures, constant-time
-HMAC comparison, and a default 300 second tolerance in either time direction.
+HMAC comparison, lowercase-only 64-character hex signatures, first-timestamp-wins
+parsing, and a default 300 second tolerance in either time direction.
 For deterministic tests use `cc.VerifyOptions{Now: time.Unix(1805047200, 0)}`.
 Set `Tolerance` to a `*time.Duration` to override it (including zero).
 

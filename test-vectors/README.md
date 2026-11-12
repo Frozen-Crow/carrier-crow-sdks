@@ -11,3 +11,8 @@ as key and the bytes of `str(timestamp) + '.' + body` as the message. The valid
 case, multi-v1 rotation, and inclusive past/future boundaries must parse to the
 original JSON object. Tampered bodies, expired timestamps, malformed headers,
 wrong signatures, and authenticated invalid JSON must raise the SDK error.
+
+Signature verification follows `api/src/webhooks/signing.ts` exactly: the first
+`t=` wins when repeated, and `v1` accepts only 64 lowercase hexadecimal characters.
+SDKs additionally parse the authenticated body, so authenticated invalid JSON is
+an error even though the reference signature check succeeds.

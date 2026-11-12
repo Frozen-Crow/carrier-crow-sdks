@@ -72,7 +72,7 @@
       "name": "duplicate-timestamp",
       "body": "{ \"webhook\":\"wh_test\", \"delivery\":\"del_test\", \"events\":[], \"note\":\"café 🐦\" }\n",
       "signature": "t=1805047200,v1=1a9f7b7d6b518ded86283ce936ead780b3c5846883c63083ed42bd3c09ca8ca1,t=1805047200",
-      "valid": false
+      "valid": true
     },
     {
       "name": "missing-v1",
@@ -84,6 +84,12 @@
       "name": "malformed-hex",
       "body": "{ \"webhook\":\"wh_test\", \"delivery\":\"del_test\", \"events\":[], \"note\":\"café 🐦\" }\n",
       "signature": "t=1805047200,v1=xyz",
+      "valid": false
+    },
+    {
+      "name": "uppercase-hex",
+      "body": "{ \"webhook\":\"wh_test\", \"delivery\":\"del_test\", \"events\":[], \"note\":\"café 🐦\" }\n",
+      "signature": "t=1805047200,v1=1A9F7B7D6B518DED86283CE936EAD780B3C5846883C63083ED42BD3C09CA8CA1",
       "valid": false
     }
   ]

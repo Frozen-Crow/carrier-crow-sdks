@@ -1,6 +1,6 @@
 Gem::Specification.new do |s|
   s.name = 'carriercrow'
-  s.version = '1.0.0'
+  s.version = '0.1.0'
   s.summary = 'Carrier Crow email API client'
   s.authors = ['Carrier Crow']
   s.license = 'MIT'

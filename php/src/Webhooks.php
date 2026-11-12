@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace CarrierCrow;
 
 class Webhooks
@@ -13,10 +15,7 @@ class Webhooks
             if (count($pair) !== 2) {
                 continue;
             }
-            if ($pair[0] === 't') {
-                if ($timestamp !== null) {
-                    throw new Error('Multiple webhook timestamps', codeName: 'invalid_signature');
-                }
+            if ($pair[0] === 't' && $timestamp === null) {
                 $timestamp = $pair[1];
             }
             if ($pair[0] === 'v1') {
@@ -31,21 +30,21 @@ class Webhooks
         $digest = hash_hmac('sha256', $timestamp . '.' . $body, $secret);
         $matched = false;
         foreach ($signatures as $candidate) {
-            if (preg_match('/^[0-9a-fA-F]{64}$/D', $candidate) && hash_equals($digest, strtolower($candidate))) {
+            if (preg_match('/^[0-9a-f]{64}$/D', $candidate) && hash_equals($digest, $candidate)) {
                 $matched = true;
             }
         }
         if (!$valid || !$matched) {
-            throw new Error('Invalid webhook signature', codeName: 'invalid_signature');
+            throw new CarrierCrowException('Invalid webhook signature', codeName: 'invalid_signature');
         }
         try {
             $data = json_decode($body, true, 512, JSON_THROW_ON_ERROR);
         } catch (\JsonException $e) {
-            throw new Error('Invalid webhook JSON', codeName: 'invalid_payload');
+            throw new CarrierCrowException('Invalid webhook JSON', codeName: 'invalid_payload');
         }
         if (!is_array($data) || !is_string($data['webhook'] ?? null)
             || !is_string($data['delivery'] ?? null) || !is_array($data['events'] ?? null)) {
-            throw new Error('Invalid webhook envelope', codeName: 'invalid_payload');
+            throw new CarrierCrowException('Invalid webhook envelope', codeName: 'invalid_payload');
         }
         return $data;
     }

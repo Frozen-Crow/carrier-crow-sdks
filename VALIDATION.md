@@ -2,17 +2,17 @@
 
 Validated on 2026-11-12. No requests were made to the real Carrier Crow API;
 HTTP tests use local mock servers and all credentials are obvious test values.
-All five suites read all **14 cases** in `test-vectors/webhooks.json`.
+All five suites read all **15 cases** in `test-vectors/webhooks.json`.
 
 | SDK | Runtime used locally | Exact command (from repository root unless noted) | Result |
 | --- | --- | --- | --- |
-| Node | Node 20.19.6 | `cd node && npm ci --ignore-scripts && npm test` | Passed: strict TypeScript ESM/CJS/declaration builds and 10 test groups; zero failures/skips, zero npm audit vulnerabilities |
-| Python | Python 3.14.7 | `python/.venv/bin/pytest python/tests -q` | Passed: 18 tests |
+| Node | Node 20.19.6 | `cd node && npm ci --ignore-scripts && npm test` | Passed: strict TypeScript ESM/CJS/declaration builds and 13 test groups; zero failures/skips, zero npm audit vulnerabilities |
+| Python | Python 3.14.7 | `python/.venv/bin/pytest python/tests -q` | Passed: 33 tests |
 | Python lint | same | `python/.venv/bin/ruff check python` | Passed |
-| Python types | same | `python/.venv/bin/mypy python/src/carriercrow` | Passed: both source files |
+| Python types | same | `python/.venv/bin/mypy --strict python/src/carriercrow` | Passed: both source files |
 | Go | Go 1.24.3 | `cd go && go test -count=1 ./... && go vet ./...` | Passed: test suite and vet, no external dependencies |
-| PHP | PHP 8.4.8, PHPUnit 10.5.66 | `cd php && composer install --no-interaction --prefer-dist && composer test && composer validate --no-check-publish` | Passed: 9 tests, 71 assertions; Composer metadata valid |
-| Ruby | Ruby 3.4.4 | `/opt/homebrew/opt/ruby/bin/ruby -I ruby/lib ruby/test/client_test.rb` | Passed: 12 tests, 123 assertions; no failures/errors/skips |
+| PHP | PHP 8.4.8, PHPUnit 10.5.66 | `cd php && composer install --no-interaction --prefer-dist && composer test && composer validate --no-check-publish` | Passed: 13 tests, 100 assertions; Composer metadata valid |
+| Ruby | Ruby 3.4.4 | `/opt/homebrew/opt/ruby/bin/ruby -I ruby/lib ruby/test/client_test.rb` | Passed: 16 tests, 161 assertions; no failures/errors/skips |
 
 Setup was `python3 -m venv python/.venv` followed by
 `python/.venv/bin/pip install -e 'python[test]'`; the only Python runtime
@@ -50,3 +50,20 @@ Initial GitHub CI confirmed Node 18/22, Go 1.21, PHP 8.1 and Ruby 3.1 passed.
 Python 3.9 setup failed before tests because `ubuntu-latest` resolved to Ubuntu
 26.04 with no Python 3.9 binary; Python's matrix now uses Ubuntu 22.04 and
 independent matrix results. The corrected run is tracked in the draft PR.
+
+## Review fixes M1–M12
+
+Revalidated all five SDKs locally after the review fixes on 2026-11-12 using
+all 15 shared vectors, including accepted duplicate timestamps and rejected
+uppercase hex. Node and Python also cover the fractional-clock past boundary.
+Regression checks cover missing keys, Retry-After caps (default 60 seconds and
+custom limits), preserved error delays, repeated cursor cycles, Go nil error
+results and retry configuration, and the PHP exception compatibility alias.
+Python's existing `EmailQuery` TypedDict now types the public query methods;
+CI runs mypy with `--strict`. All SDK release constants and package versions
+are 0.1.0; Go documents typed missing-key failure on the first request.
+
+Commands rerun for this fix pass are the commands in the table above, plus
+`npm test --prefix node` and `python/.venv/bin/ruff format --check python`;
+all passed. `git diff --check` passed and the diff for `openapi/` and
+`CONTRACT.md` is empty. No packages were published.

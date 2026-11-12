@@ -2,6 +2,9 @@ package carriercrow
 
 import (
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"io"
@@ -342,5 +345,110 @@ func TestInterruptedResponseRetry(t *testing.T) {
 		} else if calls != 2 || e != nil {
 			t.Fatal(calls, e)
 		}
+	}
+}
+
+func TestReviewDefaultsAndMissingKey(t *testing.T) {
+	t.Setenv("CARRIERCROW_API_KEY", "")
+	calls := 0
+	c := New("", Options{HTTPClient: &http.Client{Transport: transport(func(*http.Request) (*http.Response, error) { calls++; return nil, io.ErrUnexpectedEOF })}})
+	if Version != "0.1.0" || c.retries != 2 || c.maxRetryAfter != 60*time.Second {
+		t.Fatal(c, Version)
+	}
+	v, err := c.Domains.List(context.Background())
+	var api *Error
+	if v != nil || !errors.As(err, &api) || api.Code != "missing_api_key" || calls != 0 {
+		t.Fatal(v, err, calls)
+	}
+}
+
+func TestRetryAfterCapAndDisable(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		opts  Options
+		after string
+		want  time.Duration
+	}{
+		{"default cap", Options{}, "61", 61 * time.Second},
+		{"custom cap", Options{MaxRetryAfter: time.Second}, "2", 2 * time.Second},
+		{"disabled", Options{DisableRetries: true, MaxRetries: 5}, "1", time.Second},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			calls := 0
+			tc.opts.HTTPClient = &http.Client{Transport: transport(func(*http.Request) (*http.Response, error) {
+				calls++
+				return &http.Response{StatusCode: 503, Header: http.Header{"Retry-After": []string{tc.after}}, Body: io.NopCloser(strings.NewReader(`{"error":"later"}`))}, nil
+			})}
+			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+			defer cancel()
+			v, err := New("ccm_test_key", tc.opts).Domains.List(ctx)
+			var api *Error
+			if v != nil || !errors.As(err, &api) || api.Code != "http_error" || api.RetryAfter != tc.want || calls != 1 {
+				t.Fatal(v, err, calls)
+			}
+		})
+	}
+}
+
+func TestAllMethodsReturnNilOnFailure(t *testing.T) {
+	c := New("ccm_test_key", Options{DisableRetries: true, HTTPClient: &http.Client{Transport: transport(func(*http.Request) (*http.Response, error) {
+		return &http.Response{StatusCode: 400, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(`{"error":"bad"}`))}, nil
+	})}})
+	ctx := context.Background()
+	check := func(v any, err error) {
+		t.Helper()
+		if err == nil || !reflect.ValueOf(v).IsNil() {
+			t.Fatalf("result=%v err=%v", v, err)
+		}
+	}
+	v1, e1 := c.Emails.Send(ctx, SendEmail{})
+	check(v1, e1)
+	v2, e2 := c.Emails.Batch(ctx, nil)
+	check(v2, e2)
+	v3, e3 := c.Emails.Get(ctx, "id")
+	check(v3, e3)
+	v4, e4 := c.Emails.List(ctx, ListQuery{})
+	check(v4, e4)
+	v5, e5 := c.Domains.List(ctx)
+	check(v5, e5)
+	v6, e6 := c.Domains.Get(ctx, "id")
+	check(v6, e6)
+	v7, e7 := c.Domains.Check(ctx, "id")
+	check(v7, e7)
+}
+
+func TestWebhookFirstTimestampAndLowercase(t *testing.T) {
+	body := []byte(`{"webhook":"w","delivery":"d","events":[]}`)
+	mac := hmac.New(sha256.New, []byte("whsec_test_secret"))
+	mac.Write(append([]byte("1000."), body...))
+	sig := hex.EncodeToString(mac.Sum(nil))
+	for _, tc := range []struct {
+		header string
+		valid  bool
+	}{
+		{"t=1000,t=1,v1=" + sig, true},
+		{"t=1,t=1000,v1=" + sig, false},
+		{"t=,t=1000,v1=" + sig, false},
+		{"t=1000,v1=" + strings.ToUpper(sig), false},
+		{"t=1000,v1=" + strings.ToUpper(sig) + ",v1=" + sig, true},
+	} {
+		v, err := Verify(body, tc.header, "whsec_test_secret", VerifyOptions{Now: time.Unix(1000, 0)})
+		if (err == nil) != tc.valid || (!tc.valid && v != nil) {
+			t.Fatalf("%s: %v %v", tc.header, v, err)
+		}
+	}
+}
+
+func TestPagingCycle(t *testing.T) {
+	calls := 0
+	c := New("ccm_test_key", Options{HTTPClient: &http.Client{Transport: transport(func(*http.Request) (*http.Response, error) {
+		cursor := []string{"a", "b", "a"}[calls]
+		calls++
+		return &http.Response{StatusCode: 200, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(`{"emails":[],"next":"` + cursor + `"}`))}, nil
+	})}})
+	err := c.Emails.EachPage(context.Background(), ListQuery{}, func(*EmailList) bool { return true })
+	var api *Error
+	if !errors.As(err, &api) || api.Code != "invalid_response" || calls != 3 {
+		t.Fatal(err, calls)
 	}
 }

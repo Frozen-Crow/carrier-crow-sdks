@@ -371,3 +371,42 @@ test("timeout is typed and retries are bounded; malformed success is typed", asy
     },
   );
 });
+test("Retry-After above default or configured cap stops immediately", async () => {
+  for (const [retryAfter, cap] of [[86400, undefined], [3, 2]]) {
+    await mock(
+      (req, res) => json(res, { error: "later", code: "rate_limited" }, 429, {
+        "Retry-After": String(retryAfter),
+      }),
+      async (client, requests) => {
+        const bounded = new CarrierCrow("ccm_test", {
+          baseUrl: client.baseUrl, retryDelay: 0, maxRetryAfter: cap,
+        });
+        await assert.rejects(bounded.domains.list(), (e) =>
+          e instanceof CarrierCrowError && e.status === 429 && e.retryAfter === retryAfter);
+        assert.equal(requests.length, 1);
+      },
+    );
+  }
+});
+test("default webhook clock uses integer seconds and first timestamp wins", () => {
+  const original = Date.now;
+  Date.now = () => 1700000000999;
+  try {
+    const t = 1699999700, secret = "whsec_test_clock";
+    const body = JSON.stringify({ webhook: "w", delivery: "d", events: [] });
+    const signature = createHmac("sha256", secret).update(`${t}.${body}`).digest("hex");
+    assert.ok(webhooks.verify(body, `t=${t},t=0,v1=${signature}`, secret));
+  } finally {
+    Date.now = original;
+  }
+});
+test("missing API key raises a typed error", () => {
+  const previous = process.env.CARRIERCROW_API_KEY;
+  delete process.env.CARRIERCROW_API_KEY;
+  try {
+    assert.throws(() => new CarrierCrow(), (e) =>
+      e instanceof CarrierCrowError && e.code === "unauthorized");
+  } finally {
+    if (previous !== undefined) process.env.CARRIERCROW_API_KEY = previous;
+  }
+});

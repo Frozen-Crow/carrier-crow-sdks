@@ -5,7 +5,7 @@ require 'securerandom'
 require 'uri'
 
 module CarrierCrow
-  VERSION = '1.0.0'
+  VERSION = '0.1.0'
   class Error < StandardError
     attr_reader :status, :code, :field, :retry_after
 
@@ -19,12 +19,12 @@ module CarrierCrow
     def self.verify(body, signature, secret, tolerance: 300, now: Time.now.to_i)
       parts = signature.to_s.split(',').map { |p| p.strip.split('=', 2) }
       timestamps = parts.select { |k, _| k == 't' }.map(&:last)
-      timestamp = timestamps.length == 1 ? timestamps.first : nil
+      timestamp = timestamps.first
       valid = timestamp && timestamp.match?(/\A\d+\z/) && now.finite? && tolerance.finite? &&
               tolerance >= 0 && (now - timestamp.to_i).abs <= tolerance
       digest = OpenSSL::HMAC.hexdigest('SHA256', secret, "#{timestamp}.".b + body.b)
       valid &&= parts.any? { |k, v|
-        k == 'v1' && v && v.match?(/\A[0-9a-fA-F]{64}\z/) && OpenSSL.fixed_length_secure_compare(digest, v.downcase)
+        k == 'v1' && v && v.match?(/\A[0-9a-f]{64}\z/) && OpenSSL.fixed_length_secure_compare(digest, v)
       }
       raise Error.new('Invalid webhook signature', code: 'invalid_signature') unless valid
 
@@ -44,8 +44,14 @@ module CarrierCrow
     attr_reader :emails, :domains, :webhooks
 
     def initialize(api_key = ENV['CARRIERCROW_API_KEY'],
-                   base_url: 'https://api.mta.carriercrow.com', retries: 2, timeout: 30,
+                   base_url: 'https://api.mta.carriercrow.com', retries: 2, timeout: 30, max_retry_after: 60,
                    sleeper: ->(seconds) { sleep(seconds) })
+      raise Error.new('API key is required', code: 'missing_api_key') if api_key.nil? || api_key.empty?
+      unless max_retry_after.is_a?(Numeric) && max_retry_after.finite? && max_retry_after >= 0
+        raise ArgumentError, 'max_retry_after must be finite and nonnegative'
+      end
+
+      @max_retry_after = max_retry_after
       raise ArgumentError, 'retries must be a nonnegative integer' unless retries.is_a?(Integer) && retries >= 0
 
       @api_key, @base_url, @retries, @timeout, @sleeper = api_key, base_url.sub(%r{/+\z}, ''), retries, timeout, sleeper
@@ -97,7 +103,8 @@ module CarrierCrow
           data = {} unless data.is_a?(Hash)
           error = Error.new(data['error'] || "HTTP #{status}", status: status, code: data['code'],
                                                                field: data['field'], retry_after: retry_after)
-          raise error unless [429, 503].include?(status) && attempt < count
+          within_cap = retry_after.nil? || retry_after <= @max_retry_after
+          raise error unless [429, 503].include?(status) && attempt < count && within_cap
         rescue IOError, SystemCallError, Timeout::Error, SocketError, OpenSSL::SSL::SSLError => cause
           error = Error.new(cause.message, code: 'network_error')
           raise error unless attempt < count
@@ -135,11 +142,15 @@ module CarrierCrow
       return enum_for(:each, query) unless block_given?
 
       query = query.transform_keys(&:to_s)
+      seen = [query['before']].compact
       loop do
         page = list(query)
         page.fetch('emails').each { |email| yield email }
         break if page['next'].nil? || page['next'].empty?
 
+        raise Error.new('Repeated pagination cursor', code: 'invalid_response') if seen.include?(page['next'])
+
+        seen << page['next']
         query = query.merge('before' => page['next'])
       end
     end

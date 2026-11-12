@@ -11,7 +11,7 @@ import random
 import re
 import time
 import uuid
-from typing import Any, Callable, Iterator, Optional, cast
+from typing import Any, Callable, Iterator, Mapping, Optional, cast
 from urllib.parse import quote
 
 import httpx
@@ -21,6 +21,7 @@ from .models import (
     Domain,
     EmailDetail,
     EmailList,
+    EmailQuery,
     EmailSummary,
     SendEmail,
     SendResult,
@@ -66,7 +67,7 @@ class Webhooks:
         fields = [part.strip().partition("=") for part in signature_header.split(",")]
         timestamps = [value for name, sep, value in fields if name == "t" and sep]
         signatures = [value for name, sep, value in fields if name == "v1" and sep]
-        if len(timestamps) != 1 or not re.fullmatch(r"[0-9]+", timestamps[0]):
+        if not timestamps or not re.fullmatch(r"[0-9]+", timestamps[0]):
             raise CarrierCrowError(
                 "Malformed webhook signature", code="invalid_signature"
             )
@@ -75,7 +76,8 @@ class Webhooks:
             not math.isfinite(tolerance)
             or (now is not None and not math.isfinite(now))
             or tolerance < 0
-            or abs((time.time() if now is None else now) - int(timestamp)) > tolerance
+            or abs((int(time.time()) if now is None else now) - int(timestamp))
+            > tolerance
         ):
             raise CarrierCrowError(
                 "Webhook timestamp outside tolerance", code="invalid_signature"
@@ -86,7 +88,7 @@ class Webhooks:
         matches = [
             hmac.compare_digest(expected, bytes.fromhex(value))
             for value in signatures
-            if re.fullmatch(r"[0-9a-fA-F]{64}", value)
+            if re.fullmatch(r"[0-9a-f]{64}", value)
         ]
         if not any(matches):
             raise CarrierCrowError(
@@ -122,13 +124,16 @@ class Emails:
         idempotency_key: Optional[str] = None,
         retry: bool = False,
     ) -> SendResult:
-        return self._client._request(
-            "POST",
-            "/v1/emails",
-            body=params,
-            key=idempotency_key,
-            send=True,
-            retry=retry,
+        return cast(
+            SendResult,
+            self._client._request(
+                "POST",
+                "/v1/emails",
+                body=params,
+                key=idempotency_key,
+                send=True,
+                retry=retry,
+            ),
         )
 
     def batch(
@@ -138,31 +143,43 @@ class Emails:
         idempotency_key: Optional[str] = None,
         retry: bool = False,
     ) -> BatchResponse:
-        return self._client._request(
-            "POST",
-            "/v1/emails/batch",
-            body={"emails": emails},
-            key=idempotency_key,
-            send=True,
-            retry=retry,
+        return cast(
+            BatchResponse,
+            self._client._request(
+                "POST",
+                "/v1/emails/batch",
+                body={"emails": emails},
+                key=idempotency_key,
+                send=True,
+                retry=retry,
+            ),
         )
 
     def get(self, email_id: str) -> EmailDetail:
-        return self._client._request("GET", "/v1/emails/" + quote(email_id, safe=""))
+        return cast(
+            EmailDetail,
+            self._client._request("GET", "/v1/emails/" + quote(email_id, safe="")),
+        )
 
-    def list(self, query: Optional[dict[str, Any]] = None) -> EmailList:
-        return self._client._request("GET", "/v1/emails", query=query)
+    def list(self, query: Optional[EmailQuery] = None) -> EmailList:
+        return cast(EmailList, self._client._request("GET", "/v1/emails", query=query))
 
-    def pages(self, query: Optional[dict[str, Any]] = None) -> Iterator[EmailList]:
-        query = dict(query or {})
+    def pages(self, query: Optional[EmailQuery] = None) -> Iterator[EmailList]:
+        query = (query or {}).copy()
+        seen = {query["before"]} if "before" in query else set()
         while True:
             page = self.list(query)
             yield page
             if not page["next"]:
                 return
+            if page["next"] in seen:
+                raise CarrierCrowError(
+                    "Repeated paging cursor", code="invalid_response"
+                )
+            seen.add(page["next"])
             query["before"] = page["next"]
 
-    def iter(self, query: Optional[dict[str, Any]] = None) -> Iterator[EmailSummary]:
+    def iter(self, query: Optional[EmailQuery] = None) -> Iterator[EmailSummary]:
         for page in self.pages(query):
             yield from page["emails"]
 
@@ -172,14 +189,22 @@ class Domains:
         self._client = client
 
     def list(self) -> dict[str, list[Domain]]:
-        return self._client._request("GET", "/v1/domains")
+        return cast(
+            dict[str, list[Domain]], self._client._request("GET", "/v1/domains")
+        )
 
     def get(self, domain_id: str) -> Domain:
-        return self._client._request("GET", "/v1/domains/" + quote(domain_id, safe=""))
+        return cast(
+            Domain,
+            self._client._request("GET", "/v1/domains/" + quote(domain_id, safe="")),
+        )
 
     def check(self, domain_id: str) -> Domain:
-        return self._client._request(
-            "POST", "/v1/domains/" + quote(domain_id, safe="") + "/check"
+        return cast(
+            Domain,
+            self._client._request(
+                "POST", "/v1/domains/" + quote(domain_id, safe="") + "/check"
+            ),
         )
 
 
@@ -192,6 +217,7 @@ class CarrierCrow:
         max_retries: int = 2,
         timeout: float = 30,
         backoff: float = 0.5,
+        max_retry_after: float = 60,
         sleep: Callable[[float], None] = time.sleep,
     ):
         self.api_key = (
@@ -199,9 +225,14 @@ class CarrierCrow:
             if api_key is not None
             else os.environ.get("CARRIERCROW_API_KEY", "")
         )
+        if not self.api_key:
+            raise CarrierCrowError("API key is required", code="missing_api_key")
         self.base_url = base_url.rstrip("/")
         if max_retries < 0 or backoff < 0:
             raise ValueError("max_retries and backoff must be nonnegative")
+        if not math.isfinite(max_retry_after) or max_retry_after < 0:
+            raise ValueError("max_retry_after must be finite and nonnegative")
+        self.max_retry_after = max_retry_after
         self.max_retries = max_retries
         self.backoff = backoff
         self._sleep = sleep
@@ -225,7 +256,7 @@ class CarrierCrow:
         path: str,
         *,
         body: Any = None,
-        query: Optional[dict[str, Any]] = None,
+        query: Optional[Mapping[str, Any]] = None,
         key: Optional[str] = None,
         send: bool = False,
         retry: bool = False,
@@ -282,7 +313,11 @@ class CarrierCrow:
                 )
                 if response.status_code not in (429, 503):
                     raise error
-            if not allowed or attempt == self.max_retries:
+            if (
+                not allowed
+                or attempt == self.max_retries
+                or (retry_after is not None and retry_after > self.max_retry_after)
+            ):
                 raise error
             delay = self.backoff * (2**attempt) * (0.5 + random.random())
             self._sleep(max(delay, retry_after or 0))

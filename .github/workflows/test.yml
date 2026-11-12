@@ -34,7 +34,7 @@ jobs:
       - run: pip install -e './python[test]'
       - run: pytest python/tests -q
       - run: ruff check python
-      - run: mypy python/src/carriercrow
+      - run: mypy --strict python/src/carriercrow
   go:
     runs-on: ubuntu-latest
     steps:

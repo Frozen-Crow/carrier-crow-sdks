@@ -64,7 +64,7 @@ final class ClientTest extends TestCase
         self::assertSame(['emails' => [['to' => 'b']]], json_decode($requests[1]['body'], true));
         foreach ($requests as $r) {
             self::assertSame('Bearer ccm_test', $r['headers']['authorization']);
-            self::assertSame('carriercrow-php/1.0.0', $r['headers']['user-agent']);
+            self::assertSame('carriercrow-php/0.1.0', $r['headers']['user-agent']);
         }
     }
     public function testError(): void
@@ -193,6 +193,82 @@ final class ClientTest extends TestCase
             self::assertSame(503, $e->status);
         }
         self::assertCount(3, $this->state()['requests']);
+    }
+    public function testMissingKeyAndLegacyAlias(): void
+    {
+        $saved = getenv('CARRIERCROW_API_KEY');
+        putenv('CARRIERCROW_API_KEY');
+        try {
+            try {
+                new CarrierCrow();
+                self::fail('Missing key must fail at construction');
+            } catch (\CarrierCrow\CarrierCrowException $e) {
+                self::assertSame('missing_api_key', $e->errorCode);
+                self::assertSame($e->errorCode, $e->code);
+                self::assertInstanceOf(Error::class, $e);
+            }
+            putenv('CARRIERCROW_API_KEY=ccm_test_env');
+            self::assertInstanceOf(CarrierCrow::class, new CarrierCrow());
+        } finally {
+            putenv($saved === false ? 'CARRIERCROW_API_KEY' : 'CARRIERCROW_API_KEY=' . $saved);
+        }
+    }
+    public function testRetryAfterCap(): void
+    {
+        foreach ([429, 503] as $status) {
+            foreach ([[], ['maxRetryAfter' => 2]] as $options) {
+                $cap = $options['maxRetryAfter'] ?? 60;
+                $delays = [];
+                $handler = new \GuzzleHttp\Handler\MockHandler([
+                    new \GuzzleHttp\Psr7\Response($status, ['Retry-After' => (string) $cap], '{}'),
+                    new \GuzzleHttp\Psr7\Response(200, [], '{}'),
+                    new \GuzzleHttp\Psr7\Response($status, ['Retry-After' => (string) ($cap + 1)], '{"error":"later","code":"unavailable","field":"to"}'),
+                ]);
+                $client = new CarrierCrow('ccm_test', $options + [
+                    'httpClient' => new \GuzzleHttp\Client(['handler' => $handler]),
+                    'sleep' => static function ($delay) use (&$delays) {
+                        $delays[] = $delay;
+                    },
+                ]);
+                $client->domains->list();
+                self::assertSame([(float) $cap], $delays);
+                try {
+                    $client->domains->list();
+                    self::fail('Over-cap response must be raised');
+                } catch (\CarrierCrow\CarrierCrowException $e) {
+                    self::assertSame([$status, 'unavailable', 'to', (float) ($cap + 1)], [$e->status, $e->errorCode, $e->field, $e->retryAfter]);
+                }
+                self::assertCount(1, $delays);
+                self::assertCount(0, $handler);
+            }
+        }
+    }
+    public function testPagingRejectsCursorCycles(): void
+    {
+        foreach ([['loop', 'loop'], ['one', 'two', 'one']] as $cursors) {
+            $this->responses(array_map(static fn ($next) => [200, ['emails' => [], 'next' => $next]], $cursors));
+            try {
+                iterator_to_array($this->client->emails->all());
+                self::fail('Cursor cycle must fail');
+            } catch (\CarrierCrow\CarrierCrowException $e) {
+                self::assertSame('invalid_response', $e->errorCode);
+            }
+        }
+        self::assertCount(5, $this->state()['requests']);
+    }
+    public function testFirstTimestampWins(): void
+    {
+        $body = '{"webhook":"wh_test","delivery":"del_test","events":[]}';
+        $digest = hash_hmac('sha256', '100.' . $body, 'whsec_test');
+        self::assertSame(json_decode($body, true), Webhooks::verify($body, "t=100,t=101,v1=$digest", 'whsec_test', ['now' => 100]));
+        foreach (["t=101,t=100,v1=$digest", "t=bad,t=100,v1=$digest", 't=100,v1=' . strtoupper($digest)] as $header) {
+            try {
+                Webhooks::verify($body, $header, 'whsec_test', ['now' => 100]);
+                self::fail('Invalid signature must fail');
+            } catch (\CarrierCrow\CarrierCrowException $e) {
+                self::assertSame('invalid_signature', $e->errorCode);
+            }
+        }
     }
     public function testVectors(): void
     {

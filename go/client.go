@@ -17,7 +17,7 @@ import (
 	"time"
 )
 
-const Version = "1.0.0"
+const Version = "0.1.0"
 const DefaultBaseURL = "https://api.mta.carriercrow.com"
 
 // Error carries API failures and local/network failures (Status zero).
@@ -36,18 +36,25 @@ func (e *Error) Unwrap() error { return e.Cause }
 type Options struct {
 	BaseURL    string
 	HTTPClient *http.Client
+	// MaxRetries is the number of additional attempts; zero defaults to two.
 	MaxRetries int
+	// DisableRetries overrides MaxRetries. Negative MaxRetries also disables retries.
+	DisableRetries bool
+	// MaxRetryAfter defaults to 60 seconds when zero or negative.
+	// A larger server delay stops retries and is preserved in Error.RetryAfter.
+	MaxRetryAfter time.Duration
 }
 type SendOptions struct {
 	IdempotencyKey string
 	Retry          bool
 }
 type Client struct {
-	Emails    *EmailsService
-	Domains   *DomainsService
-	key, base string
-	http      *http.Client
-	retries   int
+	Emails        *EmailsService
+	Domains       *DomainsService
+	key, base     string
+	http          *http.Client
+	retries       int
+	maxRetryAfter time.Duration
 }
 type EmailsService struct{ client *Client }
 type DomainsService struct{ client *Client }
@@ -71,15 +78,21 @@ func New(apiKey string, options ...Options) *Client {
 	if retries == 0 {
 		retries = 2
 	}
-	if retries < 0 {
+	if retries < 0 || o.DisableRetries {
 		retries = 0
 	}
-	c := &Client{key: apiKey, base: strings.TrimRight(o.BaseURL, "/"), http: o.HTTPClient, retries: retries}
+	if o.MaxRetryAfter <= 0 {
+		o.MaxRetryAfter = 60 * time.Second
+	}
+	c := &Client{maxRetryAfter: o.MaxRetryAfter, key: apiKey, base: strings.TrimRight(o.BaseURL, "/"), http: o.HTTPClient, retries: retries}
 	c.Emails = &EmailsService{c}
 	c.Domains = &DomainsService{c}
 	return c
 }
 func (c *Client) request(ctx context.Context, method, path string, body any, out any, send *SendOptions) error {
+	if c.key == "" {
+		return &Error{Code: "missing_api_key", Message: "an API key or CARRIERCROW_API_KEY is required"}
+	}
 	var data []byte
 	var err error
 	if body != nil {
@@ -148,6 +161,9 @@ func (c *Client) request(ctx context.Context, method, path string, body any, out
 				if wire.Error == "" {
 					wire.Error = http.StatusText(resp.StatusCode)
 				}
+				if wire.Code == "" {
+					wire.Code = "http_error"
+				}
 				failure = &Error{Status: resp.StatusCode, Code: wire.Code, Message: wire.Error, Field: wire.Field}
 				if secs, e := strconv.ParseInt(resp.Header.Get("Retry-After"), 10, 32); e == nil && secs > 0 {
 					failure.RetryAfter = time.Duration(secs) * time.Second
@@ -155,7 +171,7 @@ func (c *Client) request(ctx context.Context, method, path string, body any, out
 				retry = resp.StatusCode == 429 || resp.StatusCode == 503
 			}
 		}
-		if !retry || attempt >= retries || ctx.Err() != nil {
+		if !retry || attempt >= retries || ctx.Err() != nil || failure.RetryAfter > c.maxRetryAfter {
 			return failure
 		}
 		delay := 100 * time.Millisecond * time.Duration(1<<min(attempt, 8))
@@ -175,12 +191,6 @@ func (c *Client) request(ctx context.Context, method, path string, body any, out
 		}
 	}
 }
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}
 func (s *EmailsService) Send(ctx context.Context, p SendEmail, options ...SendOptions) (*SendResult, error) {
 	o := SendOptions{}
 	if len(options) > 0 {
@@ -188,7 +198,10 @@ func (s *EmailsService) Send(ctx context.Context, p SendEmail, options ...SendOp
 	}
 	v := new(SendResult)
 	e := s.client.request(ctx, "POST", "/v1/emails", p, v, &o)
-	return v, e
+	if e != nil {
+		return nil, e
+	}
+	return v, nil
 }
 func (s *EmailsService) Batch(ctx context.Context, p []SendEmail, options ...SendOptions) (*BatchResponse, error) {
 	o := SendOptions{}
@@ -199,12 +212,18 @@ func (s *EmailsService) Batch(ctx context.Context, p []SendEmail, options ...Sen
 	e := s.client.request(ctx, "POST", "/v1/emails/batch", struct {
 		Emails []SendEmail `json:"emails"`
 	}{p}, v, &o)
-	return v, e
+	if e != nil {
+		return nil, e
+	}
+	return v, nil
 }
 func (s *EmailsService) Get(ctx context.Context, id string) (*EmailDetail, error) {
 	v := new(EmailDetail)
 	e := s.client.request(ctx, "GET", "/v1/emails/"+url.PathEscape(id), nil, v, nil)
-	return v, e
+	if e != nil {
+		return nil, e
+	}
+	return v, nil
 }
 func (s *EmailsService) List(ctx context.Context, q ListQuery) (*EmailList, error) {
 	v := url.Values{}
@@ -224,11 +243,15 @@ func (s *EmailsService) List(ctx context.Context, q ListQuery) (*EmailList, erro
 	}
 	p := new(EmailList)
 	e := s.client.request(ctx, "GET", "/v1/emails?"+v.Encode(), nil, p, nil)
-	return p, e
+	if e != nil {
+		return nil, e
+	}
+	return p, nil
 }
 
 // EachPage follows next cursors until exhausted or the callback returns false.
 func (s *EmailsService) EachPage(ctx context.Context, q ListQuery, visit func(*EmailList) bool) error {
+	seen := map[string]bool{q.Before: true}
 	for {
 		p, e := s.List(ctx, q)
 		if e != nil {
@@ -237,16 +260,20 @@ func (s *EmailsService) EachPage(ctx context.Context, q ListQuery, visit func(*E
 		if !visit(p) || p.Next == nil || *p.Next == "" {
 			return nil
 		}
-		if *p.Next == q.Before {
+		if seen[*p.Next] {
 			return &Error{Code: "invalid_response", Message: "pagination cursor did not advance"}
 		}
+		seen[*p.Next] = true
 		q.Before = *p.Next
 	}
 }
 func (s *DomainsService) List(ctx context.Context) (*DomainList, error) {
 	v := new(DomainList)
 	e := s.client.request(ctx, "GET", "/v1/domains", nil, v, nil)
-	return v, e
+	if e != nil {
+		return nil, e
+	}
+	return v, nil
 }
 func (s *DomainsService) Get(ctx context.Context, id string) (*Domain, error) {
 	return s.domain(ctx, "GET", id, "")
@@ -257,5 +284,8 @@ func (s *DomainsService) Check(ctx context.Context, id string) (*Domain, error) 
 func (s *DomainsService) domain(ctx context.Context, method, id, suffix string) (*Domain, error) {
 	v := new(Domain)
 	e := s.client.request(ctx, method, "/v1/domains/"+url.PathEscape(id)+suffix, nil, v, nil)
-	return v, e
+	if e != nil {
+		return nil, e
+	}
+	return v, nil
 }

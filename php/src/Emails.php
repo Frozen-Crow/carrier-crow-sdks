@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace CarrierCrow;
 
 class Emails
@@ -25,12 +27,21 @@ class Emails
     }
     public function all(array $query = []): \Generator
     {
+        $seen = [];
+        if (isset($query['before'])) {
+            $seen[] = $query['before'];
+        }
         do {
             $page = $this->list($query);
             foreach ($page['emails'] as $email) {
                 yield $email;
             }
-            $query['before'] = $page['next'] ?? null;
+            $next = $page['next'] ?? null;
+            if ($next !== null && in_array($next, $seen, true)) {
+                throw new CarrierCrowException('Repeated pagination cursor', codeName: 'invalid_response');
+            }
+            $seen[] = $next;
+            $query['before'] = $next;
         } while ($query['before'] !== null);
     }
 }

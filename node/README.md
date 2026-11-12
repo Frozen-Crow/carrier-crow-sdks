@@ -76,7 +76,7 @@ try {
 }
 ```
 
-Reads and DNS checks retry up to twice on 429, 503 or network failures, using exponential backoff with jitter and honoring `Retry-After` seconds. Configure `{ maxRetries: 2, retryDelay: 500, timeout: 30000 }` on the client (delays and timeout are milliseconds). `maxRetries: 0` disables automatic retries. Other HTTP errors are not retried.
+Reads and DNS checks retry up to twice on 429, 503 or network failures, using exponential backoff with jitter and honoring `Retry-After` seconds. Configure `{ maxRetries: 2, retryDelay: 500, timeout: 30000, maxRetryAfter: 60 }` on the client (delays and timeout are milliseconds). `maxRetries: 0` disables automatic retries. `maxRetryAfter` is in seconds and defaults to 60; a larger server delay stops retries and raises the error with its original `retryAfter`. Other HTTP errors are not retried.
 
 Sends and batches without a key run once, regardless of the client retry count. Providing `idempotencyKey` enables retries up to `maxRetries`; a per-call `{ retries: 2 }` explicitly requests retries and generates a random key if none was supplied. That key and the serialized body stay identical across attempts. `{ retries: 0 }` disables retries for a call. For retries across application restarts, persist your own key; reusing it with a changed body causes `409 idempotency_conflict`. Network and webhook errors have status `0`; network failures use `network_error` and retain the underlying `cause`.
 

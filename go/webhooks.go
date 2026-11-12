@@ -38,16 +38,15 @@ func Verify(body []byte, signatureHeader, secret string, options ...VerifyOption
 		return fail("webhook tolerance must be nonnegative")
 	}
 	var timestamp string
+	timestampSeen := false
 	var signatures []string
 	for _, part := range strings.Split(signatureHeader, ",") {
 		kv := strings.SplitN(strings.TrimSpace(part), "=", 2)
 		if len(kv) != 2 {
 			continue
 		}
-		if kv[0] == "t" {
-			if timestamp != "" {
-				return fail("multiple webhook timestamps")
-			}
+		if kv[0] == "t" && !timestampSeen {
+			timestampSeen = true
 			timestamp = kv[1]
 		}
 		if kv[0] == "v1" {
@@ -80,6 +79,11 @@ func Verify(body []byte, signatureHeader, secret string, options ...VerifyOption
 	expected := mac.Sum(nil)
 	matched := false
 	for _, signature := range signatures {
+		if len(signature) != 64 || strings.IndexFunc(signature, func(c rune) bool {
+			return !(c >= '0' && c <= '9' || c >= 'a' && c <= 'f')
+		}) >= 0 {
+			continue
+		}
 		decoded, e := hex.DecodeString(signature)
 		if e == nil && hmac.Equal(expected, decoded) {
 			matched = true

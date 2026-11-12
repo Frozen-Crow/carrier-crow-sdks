@@ -5,7 +5,7 @@ Requires PHP 8.1+ and Composer. For this source checkout run `composer install` 
 ```php
 require 'vendor/autoload.php';
 use CarrierCrow\CarrierCrow;
-use CarrierCrow\Error;
+use CarrierCrow\CarrierCrowException;
 
 // Omit the key to read CARRIERCROW_API_KEY. OAuth access tokens also work.
 $cc = new CarrierCrow('ccm_test_example', [
@@ -67,14 +67,14 @@ $accepted = $cc->emails->send($email, [
 ]);
 try {
     $cc->emails->get('missing-id');
-} catch (Error $e) {
+} catch (CarrierCrowException $e) {
     echo $e->getMessage();
     // HTTP metadata is null for local/network errors.
-    var_dump($e->status, $e->code, $e->field, $e->retryAfter);
+    var_dump($e->status, $e->errorCode, $e->field, $e->retryAfter);
 }
 ```
 
-Verify the exact request bytes before decoding or changing them. The full `whsec_` secret is the HMAC key. Verification allows multiple `v1` signatures, uses constant-time comparison, rejects timestamps outside the tolerance in either direction, and throws `CarrierCrow\Error` on failure.
+Verify the exact request bytes before decoding or changing them. The full `whsec_` secret is the HMAC key. Verification allows multiple `v1` signatures, uses constant-time comparison, rejects timestamps outside the tolerance in either direction, and throws `CarrierCrow\CarrierCrowException` on failure.
 
 ```php
 $rawBody = file_get_contents('php://input');
@@ -92,3 +92,5 @@ foreach ($event['events'] as $item) {
 ```
 
 Run `composer install` and `composer test` from `php/`. Tests use a local PHP HTTP server and the shared `../test-vectors/webhooks.json`; injected Guzzle network failures also verify safe retry behavior. The client accepts `httpClient` (a Guzzle ClientInterface) and `sleep` (seconds callback) options for custom transports and deterministic tests.
+
+Missing API keys raise `missing_api_key` at construction. `maxRetryAfter` defaults to 60 seconds; responses above it are raised immediately with `retryAfter` preserved. Repeated pagination cursors raise `invalid_response`. `CarrierCrow\Error` remains a deprecated alias of `CarrierCrowException`. Webhook verification uses the first timestamp and accepts lowercase v1 hex only.

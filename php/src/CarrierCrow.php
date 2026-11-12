@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace CarrierCrow;
 
 use GuzzleHttp\Client;
@@ -8,7 +10,7 @@ use GuzzleHttp\Exception\TransferException;
 
 class CarrierCrow
 {
-    public const VERSION = '1.0.0';
+    public const VERSION = '0.1.0';
     public readonly Emails $emails;
     public readonly Domains $domains;
     public readonly Webhooks $webhooks;
@@ -19,6 +21,13 @@ class CarrierCrow
     public function __construct(?string $apiKey = null, array $options = [])
     {
         $this->key = $apiKey ?? (getenv('CARRIERCROW_API_KEY') ?: '');
+        if ($this->key === '') {
+            throw new CarrierCrowException('API key is required', codeName: 'missing_api_key');
+        }
+        $cap = $options['maxRetryAfter'] ?? 60;
+        if ((!is_int($cap) && !is_float($cap)) || !is_finite((float) $cap) || $cap < 0) {
+            throw new CarrierCrowException('maxRetryAfter must be finite and nonnegative', codeName: 'invalid_request');
+        }
         $this->options = $options;
         $this->http = $options['httpClient'] ?? new Client();
         $this->emails = new Emails($this);
@@ -30,11 +39,11 @@ class CarrierCrow
     {
         $retries = $options['retries'] ?? $this->options['retries'] ?? 2;
         if (!is_int($retries) || $retries < 0) {
-            throw new Error('Retries must be a nonnegative integer', codeName: 'invalid_request');
+            throw new CarrierCrowException('Retries must be a nonnegative integer', codeName: 'invalid_request');
         }
         $key = $options['idempotencyKey'] ?? null;
         if ($key !== null && (!is_string($key) || strlen($key) < 1 || strlen($key) > 255)) {
-            throw new Error('Idempotency key must contain 1–255 characters', codeName: 'invalid_request');
+            throw new CarrierCrowException('Idempotency key must contain 1–255 characters', codeName: 'invalid_request');
         }
         if ($send && !$key && ($options['retries'] ?? 0) > 0) {
             $key = bin2hex(random_bytes(16));
@@ -67,7 +76,7 @@ class CarrierCrow
                 $data = json_decode($raw, true);
                 if ($status >= 200 && $status < 300) {
                     if (!is_array($data) || json_last_error() !== JSON_ERROR_NONE) {
-                        throw new Error('Invalid JSON response', $status, 'invalid_response');
+                        throw new CarrierCrowException('Invalid JSON response', $status, 'invalid_response');
                     }
                     return $data;
                 }
@@ -76,13 +85,13 @@ class CarrierCrow
                 }
                 $header = $response->getHeaderLine('Retry-After');
                 $retryAfter = is_numeric($header) && is_finite((float) $header) && (float) $header >= 0 ? (float) $header : null;
-                $error = new Error($data['error'] ?? "HTTP $status", $status, $data['code'] ?? null, $data['field'] ?? null, $retryAfter);
-                if (!in_array($status, [429, 503], true) || $attempt >= $retries) {
+                $error = new CarrierCrowException($data['error'] ?? "HTTP $status", $status, $data['code'] ?? null, $data['field'] ?? null, $retryAfter);
+                if (!in_array($status, [429, 503], true) || $attempt >= $retries || ($retryAfter !== null && $retryAfter > ($this->options['maxRetryAfter'] ?? 60))) {
                     throw $error;
                 }
             } catch (TransferException $cause) {
                 if ($attempt >= $retries) {
-                    throw new Error($cause->getMessage(), codeName: 'network_error');
+                    throw new CarrierCrowException($cause->getMessage(), codeName: 'network_error');
                 }
             }
             $delay = max($retryAfter ?? 0, 0.25 * (2 ** $attempt) * (0.5 + random_int(0, 1000) / 1000));

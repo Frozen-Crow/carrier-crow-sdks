@@ -29,6 +29,8 @@ export class CarrierCrowError extends Error {
 export interface ClientOptions {
   baseUrl?: string;
   /** Retry count for reads and sends with an explicit key. Default 2. */ maxRetries?: number;
+  /** Maximum accepted Retry-After in seconds. Default 60; larger values stop retries. */
+  maxRetryAfter?: number;
   timeout?: number;
   /** Initial backoff in milliseconds. Default 500. */ retryDelay?: number;
 }
@@ -63,12 +65,12 @@ export const webhooks = {
       throw new CarrierCrowError(message, 0, "invalid_signature");
     };
     const tolerance = options.tolerance ?? 300;
-    const now = options.now ?? Date.now() / 1000;
+    const now = options.now ?? Math.floor(Date.now() / 1000);
     if (!Number.isFinite(tolerance) || tolerance < 0 || !Number.isFinite(now))
       return fail("Invalid webhook clock or tolerance");
     const parts = signatureHeader.split(",").map((p) => p.trim());
     const timestamps = parts.filter((p) => p.startsWith("t="));
-    if (timestamps.length !== 1 || !/^t=\d+$/.test(timestamps[0]))
+    if (timestamps.length === 0 || !/^t=\d+$/.test(timestamps[0]))
       return fail("Missing or invalid webhook timestamp");
     const timestamp = timestamps[0].slice(2);
     if (
@@ -87,7 +89,7 @@ export const webhooks = {
       .some((p) => {
         const hex = p.slice(3);
         return (
-          /^[a-fA-F0-9]{64}$/.test(hex) &&
+          /^[0-9a-f]{64}$/.test(hex) &&
           timingSafeEqual(expected, Buffer.from(hex, "hex"))
         );
       });
@@ -119,6 +121,7 @@ export class CarrierCrow {
   private readonly key: string;
   private readonly baseUrl: string;
   private readonly maxRetries: number;
+  private readonly maxRetryAfter: number;
   private readonly timeout: number;
   private readonly retryDelay: number;
   readonly webhooks = webhooks;
@@ -137,16 +140,19 @@ export class CarrierCrow {
       options.baseUrl ?? "https://api.mta.carriercrow.com"
     ).replace(/\/+$/, "");
     this.maxRetries = count(options.maxRetries ?? 2, "maxRetries");
+    this.maxRetryAfter = options.maxRetryAfter ?? 60;
     this.timeout = options.timeout ?? 30000;
     this.retryDelay = options.retryDelay ?? 500;
     if (
+      !Number.isFinite(this.maxRetryAfter) ||
+      this.maxRetryAfter < 0 ||
       !Number.isFinite(this.timeout) ||
       this.timeout <= 0 ||
       !Number.isFinite(this.retryDelay) ||
       this.retryDelay < 0
     )
       throw new CarrierCrowError(
-        "Invalid timeout or retryDelay",
+        "Invalid timeout, retryDelay or maxRetryAfter",
         0,
         "invalid_request",
       );
@@ -298,6 +304,7 @@ export class CarrierCrow {
       }
       if (
         attempt >= retries ||
+        (failure.retryAfter !== undefined && failure.retryAfter > this.maxRetryAfter) ||
         ![0, 429, 503].includes(failure.status) ||
         (failure.status === 0 && failure.code !== "network_error")
       )

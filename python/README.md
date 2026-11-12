@@ -39,11 +39,13 @@ reads use `messageId`, `firstAt`, and `bounceClass`. TypedDict models are in
 `carriercrow.models` and the package includes `py.typed`.
 
 Reads and DNS checks retry network errors, 429, and 503 up to `max_retries=2`
-with exponential backoff and jitter. `Retry-After` seconds is a minimum delay.
+with exponential backoff and jitter. `Retry-After` seconds is a minimum delay. If it exceeds `max_retry_after`
+(default 60 seconds), retries stop and the error preserves `retry_after`.
 Sends and batches retry only with an idempotency key; `retry=True` generates a
 fresh UUID once for the operation and reuses it on every attempt. Use a stable
 explicit key to deduplicate across separate calls. `backoff`, `timeout`, and
-`max_retries` are client options. Errors raise `CarrierCrowError`, with
+`max_retries` are client options. Missing API keys raise `CarrierCrowError`
+with code `missing_api_key` at construction. Errors raise `CarrierCrowError`, with
 `status` (0 for local errors), `code`, `message`, `field`, `retry_after`
 (and its `retryAfter` alias). Use `close()` or a context manager.
 

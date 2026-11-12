@@ -2,7 +2,7 @@
 
 Ruby 3.1+ client using `net/http`, with no runtime gem dependencies.
 Install from this checkout with `gem build carriercrow.gemspec` and
-`gem install ./carriercrow-1.0.0.gem`, or use a Bundler path dependency:
+`gem install ./carriercrow-0.1.0.gem`, or use a Bundler path dependency:
 
 ```ruby
 gem 'carriercrow', path: '/path/to/api-sdks-mcp/ruby'
@@ -87,7 +87,7 @@ Client options are `base_url`, `retries` (default 2 additional attempts),
 `sleeper` callable. Reads and domain checks retry 429, 503, and network failures
 with exponential backoff and jitter, honoring a numeric `Retry-After` minimum.
 Other HTTP failures are raised immediately. Every request sends
-`User-Agent: carriercrow-ruby/1.0.0` and bearer authentication.
+`User-Agent: carriercrow-ruby/0.1.0` and bearer authentication.
 
 Sends and batches without a key make exactly one attempt, even when client
 retries are configured. A supplied `idempotency_key` enables the client retry
@@ -128,3 +128,5 @@ ruby -I ruby/lib ruby/test/client_test.rb
 The minitest suite uses a local TCP HTTP mock and runs every case in
 `../test-vectors/webhooks.json`, including per-case clock/tolerance overrides.
 No API credentials or external API connection are required.
+
+Missing API keys raise `CarrierCrow::Error` with `missing_api_key` at construction. The client option `max_retry_after` defaults to 60 seconds; responses above it raise immediately with `retry_after` preserved. Repeated pagination cursors raise `invalid_response`. Webhook verification uses the first timestamp and accepts lowercase v1 hex only.

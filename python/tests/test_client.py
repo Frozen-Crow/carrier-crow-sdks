@@ -233,3 +233,77 @@ def test_webhook_vectors():
         else:
             with pytest.raises(CarrierCrowError):
                 webhooks.verify(*args, **kwargs)
+
+
+@pytest.mark.parametrize("key", [None, ""])
+def test_missing_api_key_is_typed(monkeypatch, key):
+    monkeypatch.delenv("CARRIERCROW_API_KEY", raising=False)
+    with pytest.raises(CarrierCrowError) as caught:
+        CarrierCrow(key)
+    assert caught.value.code == "missing_api_key"
+    assert caught.value.status == 0
+
+
+@pytest.mark.parametrize("status", [429, 503])
+@pytest.mark.parametrize(
+    "cap,delay,retries", [(60, 61, False), (60, 60, True), (2, 3, False)]
+)
+def test_retry_after_cap(server, status, cap, delay, retries):
+    client, requests, replies = server
+    assert client.max_retry_after == 60
+    client.max_retry_after = cap
+    delays = []
+    client._sleep = delays.append
+    replies.append(
+        (status, {"error": "Wait", "code": "unavailable"}, {"Retry-After": str(delay)})
+    )
+    if retries:
+        replies.append((200, {"domains": []}, {}))
+        assert client.domains.list() == {"domains": []}
+        assert delays == [delay]
+        assert len(requests) == 2
+    else:
+        with pytest.raises(CarrierCrowError) as caught:
+            client.domains.list()
+        assert caught.value.status == status
+        assert caught.value.retry_after == delay
+        assert caught.value.retryAfter == delay
+        assert delays == []
+        assert len(requests) == 1
+
+
+@pytest.mark.parametrize("cap", [-1, float("inf"), float("nan")])
+def test_invalid_retry_after_cap(cap):
+    with pytest.raises(ValueError, match="max_retry_after"):
+        CarrierCrow("ccm_test_key", max_retry_after=cap)
+
+
+@pytest.mark.parametrize(
+    "cursors,query", [(["a", "a"], {}), (["a", "b", "a"], {}), (["a"], {"before": "a"})]
+)
+def test_repeated_paging_cursor(server, cursors, query):
+    client, requests, replies = server
+    replies.extend(
+        (200, {"emails": [], "next": cursor, "since": "now"}, {}) for cursor in cursors
+    )
+    with pytest.raises(CarrierCrowError) as caught:
+        list(client.emails.pages(query))
+    assert caught.value.code == "invalid_response"
+    assert len(requests) == len(cursors)
+
+
+def test_webhook_reference_edges(monkeypatch):
+    import hashlib
+    import hmac
+
+    body = b'{"webhook":"wh_test","delivery":"del_test","events":[]}'
+    secret = "whsec_test_edges"
+    digest = hmac.new(secret.encode(), b"1000." + body, hashlib.sha256).hexdigest()
+    monkeypatch.setattr("carriercrow.time.time", lambda: 1300.9)
+    assert webhooks.verify(body, f"t=1000,t=oops,v1={digest}", secret)["events"] == []
+    with pytest.raises(CarrierCrowError):
+        webhooks.verify(body, f"t=oops,t=1000,v1={digest}", secret)
+    with pytest.raises(CarrierCrowError):
+        webhooks.verify(body, f"t=1000,v1={digest.upper()}", secret)
+    with pytest.raises(CarrierCrowError):
+        webhooks.verify(body, f"t=1000,v1={digest}", secret, now=1300.9)

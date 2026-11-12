@@ -60,7 +60,7 @@ class ClientTest < Minitest::Test
     assert_equal({ 'emails' => [{ 'to' => 'b' }] }, JSON.parse(@requests[1][2]))
     @requests.each do |_, headers, _|
       assert_equal 'Bearer ccm_test', headers['authorization']
-      assert_equal 'carriercrow-ruby/1.0.0', headers['user-agent']
+      assert_equal 'carriercrow-ruby/0.1.0', headers['user-agent']
     end
   end
 
@@ -170,6 +170,59 @@ class ClientTest < Minitest::Test
     assert_empty @client.emails.each(query).to_a
     assert_equal [['before', 'new'], ['q', 'hello']], URI.decode_www_form(URI(@requests.last[0][1]).query)
     assert_equal 'old', query['before']
+  end
+
+  def test_missing_key_and_environment_fallback
+    saved = ENV.delete('CARRIERCROW_API_KEY')
+    error = assert_raises(CarrierCrow::Error) { CarrierCrow::Client.new }
+    assert_equal 'missing_api_key', error.code
+    error = assert_raises(CarrierCrow::Error) { CarrierCrow::Client.new('') }
+    assert_equal 'missing_api_key', error.code
+    ENV['CARRIERCROW_API_KEY'] = 'ccm_test_env'
+    assert_instance_of CarrierCrow::Client, CarrierCrow::Client.new
+  ensure
+    saved.nil? ? ENV.delete('CARRIERCROW_API_KEY') : ENV['CARRIERCROW_API_KEY'] = saved
+  end
+
+  def test_retry_after_cap
+    [429, 503].each do |status|
+      [{}, { max_retry_after: 2 }].each do |options|
+        cap = options.fetch(:max_retry_after, 60)
+        delays = []
+        client = CarrierCrow::Client.new('ccm_test', base_url: "http://127.0.0.1:#{@server.addr[1]}",
+                                                     sleeper: ->(delay) { delays << delay }, **options)
+        @responses.concat([[status, {}, "Retry-After: #{cap}\r\n"], [200, {}]])
+        client.domains.list
+        assert_equal [cap.to_f], delays
+        start = @requests.length
+        @responses << [status, { error: 'later', code: 'unavailable', field: 'to' }, "Retry-After: #{cap + 1}\r\n"]
+        error = assert_raises(CarrierCrow::Error) { client.domains.list }
+        assert_equal [status, 'unavailable', 'to', (cap + 1).to_f],
+                     [error.status, error.code, error.field, error.retry_after]
+        assert_equal start + 1, @requests.length
+        assert_equal 1, delays.length
+      end
+    end
+  end
+
+  def test_paging_rejects_cursor_cycles
+    [%w[loop loop], %w[one two one]].each do |cursors|
+      @responses.concat(cursors.map { |cursor| [200, { emails: [], next: cursor }] })
+      error = assert_raises(CarrierCrow::Error) { @client.emails.each.to_a }
+      assert_equal 'invalid_response', error.code
+    end
+    assert_equal 5, @requests.length
+  end
+
+  def test_first_timestamp_wins
+    body = JSON.generate(webhook: 'wh_test', delivery: 'del_test', events: [])
+    digest = OpenSSL::HMAC.hexdigest('SHA256', 'whsec_test', "100.#{body}")
+    assert_equal JSON.parse(body),
+                 CarrierCrow::Webhooks.verify(body, "t=100,t=101,v1=#{digest}", 'whsec_test', now: 100)
+    ["t=101,t=100,v1=#{digest}", "t=bad,t=100,v1=#{digest}", "t=100,v1=#{digest.upcase}"].each do |header|
+      error = assert_raises(CarrierCrow::Error) { CarrierCrow::Webhooks.verify(body, header, 'whsec_test', now: 100) }
+      assert_equal 'invalid_signature', error.code
+    end
   end
 
   def test_vectors
