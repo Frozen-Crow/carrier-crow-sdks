@@ -1,0 +1,456 @@
+openapi: 3.1.0
+info:
+  title: Carrier Crow API
+  version: 1.0.0
+  description: |
+    Send email over HTTP, read what happened to it, and check your domains.
+    The interface between the API and the SDKs; see CONTRACT.md for the rest.
+servers:
+  - url: https://api.mta.carriercrow.com
+security:
+  - bearer: []
+tags:
+  - name: Emails
+  - name: Domains
+
+paths:
+  /v1/emails:
+    post:
+      tags: [Emails]
+      operationId: sendEmail
+      summary: Send an email
+      description: Needs `emails:send`.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SendEmail' }
+      responses:
+        '202':
+          description: Accepted by Carrier Crow. Follow it with GET /v1/emails/{id} or webhooks.
+          headers:
+            Idempotent-Replayed:
+              schema: { type: string, enum: ['true'] }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SendResult' }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+        '413': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/RetryLater' }
+        '503': { $ref: '#/components/responses/RetryLater' }
+    get:
+      tags: [Emails]
+      operationId: listEmails
+      summary: List and search emails, newest first
+      description: Needs `emails:read` or `telemetry:read`.
+      parameters:
+        - { name: q, in: query, schema: { type: string }, description: 'An address, @domain, your message ID, or the MTA id' }
+        - name: status
+          in: query
+          style: form
+          explode: true
+          schema: { type: array, items: { $ref: '#/components/schemas/EmailStatus' } }
+        - { name: tenant, in: query, schema: { type: string } }
+        - { name: app, in: query, schema: { type: string } }
+        - { name: days, in: query, schema: { type: integer, minimum: 1, maximum: 30 } }
+        - { name: before, in: query, schema: { type: string }, description: 'The `next` of the page before' }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 200 } }
+      responses:
+        '200':
+          description: A page of emails
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EmailList' }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+
+  /v1/emails/batch:
+    post:
+      tags: [Emails]
+      operationId: sendBatch
+      summary: Send up to 100 emails in one request
+      description: Needs `emails:send`. One bad email doesn't stop the others.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [emails]
+              additionalProperties: false
+              properties:
+                emails:
+                  type: array
+                  minItems: 1
+                  maxItems: 100
+                  items: { $ref: '#/components/schemas/SendEmail' }
+      responses:
+        '200':
+          description: One result per email, in order
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [results]
+                properties:
+                  results:
+                    type: array
+                    items: { $ref: '#/components/schemas/BatchResult' }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/RetryLater' }
+        '503': { $ref: '#/components/responses/RetryLater' }
+
+  /v1/emails/{id}:
+    get:
+      tags: [Emails]
+      operationId: getEmail
+      summary: One email's story
+      description: Needs `emails:read` or `telemetry:read`.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, pattern: '^[0-9a-f]{32}$' }
+      responses:
+        '200':
+          description: The email, every step it took, and the updates sent about it
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EmailDetail' }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+
+  /v1/domains:
+    get:
+      tags: [Domains]
+      operationId: listDomains
+      summary: Your sending domains and their DNS records
+      description: Needs `domains:read`.
+      responses:
+        '200':
+          description: Every domain you can see
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [domains]
+                properties:
+                  domains:
+                    type: array
+                    items: { $ref: '#/components/schemas/Domain' }
+        '401': { $ref: '#/components/responses/Error' }
+
+  /v1/domains/{id}:
+    get:
+      tags: [Domains]
+      operationId: getDomain
+      summary: One domain
+      description: Needs `domains:read`.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: The domain
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Domain' }
+        '401': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+
+  /v1/domains/{id}/check:
+    post:
+      tags: [Domains]
+      operationId: checkDomain
+      summary: Read the domain's DNS again now
+      description: Needs `domains:read`.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: The domain, as DNS says now
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Domain' }
+        '401': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+
+components:
+  securitySchemes:
+    bearer:
+      type: http
+      scheme: bearer
+      description: An API key (`ccm_…`) or an OAuth access token (`cco_…`).
+
+  parameters:
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: false
+      description: Same key and body within 24 hours returns the first response again.
+      schema: { type: string, minLength: 1, maxLength: 255 }
+
+  responses:
+    Error:
+      description: Something to fix in the request, or a refusal
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    RetryLater:
+      description: Try again after Retry-After seconds
+      headers:
+        Retry-After:
+          schema: { type: integer }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+
+  schemas:
+    Error:
+      type: object
+      required: [error, code]
+      properties:
+        error: { type: string, description: 'What went wrong and what to send instead, in a sentence' }
+        code:
+          type: string
+          enum: [invalid_request, unauthorized, forbidden, app_mismatch, not_found, idempotency_conflict, too_large, rejected, rate_limited, unavailable]
+        field: { type: string, description: 'The input at fault, e.g. to[2]' }
+
+    Addresses:
+      oneOf:
+        - { type: string }
+        - { type: array, items: { type: string }, minItems: 1 }
+
+    SendEmail:
+      type: object
+      required: [from, to, subject]
+      additionalProperties: false
+      properties:
+        from: { type: string, description: '"Name <addr@domain>" or "addr@domain"; the domain must be one of the app sender''s' }
+        to: { $ref: '#/components/schemas/Addresses' }
+        cc: { $ref: '#/components/schemas/Addresses' }
+        bcc: { $ref: '#/components/schemas/Addresses' }
+        reply_to: { $ref: '#/components/schemas/Addresses' }
+        subject: { type: string, minLength: 1, maxLength: 998 }
+        html: { type: string }
+        text: { type: string }
+        headers:
+          type: object
+          additionalProperties: { type: string }
+          description: Extra headers. Not From, To, Cc, Bcc, Subject, Reply-To, Message-ID, Date, MIME-Version, Content-*, or X-CC-*.
+        attachments:
+          type: array
+          items: { $ref: '#/components/schemas/Attachment' }
+        message_id: { type: string, maxLength: 255, description: 'Your ID for this email (X-CC-Message-Id)' }
+        subscriber: { type: string, maxLength: 255, description: 'Your ID for the recipient (X-CC-Subscriber)' }
+        campaign: { type: string, pattern: '^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$', description: 'Groups emails in reports (X-CC-Campaign)' }
+        app: { type: string, description: 'The app that sends it. Required with an OAuth token' }
+      description: At least one of html or text. Up to 50 recipients across to, cc and bcc.
+
+    Attachment:
+      type: object
+      required: [filename, content]
+      additionalProperties: false
+      properties:
+        filename: { type: string, minLength: 1, maxLength: 255 }
+        content: { type: string, contentEncoding: base64 }
+        content_type: { type: string }
+
+    SendResult:
+      type: object
+      required: [object, status, message_id, recipients]
+      properties:
+        object: { type: string, enum: [email] }
+        status: { type: string, enum: [accepted] }
+        message_id: { type: [string, 'null'] }
+        recipients:
+          type: array
+          items:
+            type: object
+            required: [address, id]
+            properties:
+              address: { type: string }
+              id: { type: string, pattern: '^[0-9a-f]{32}$', description: 'The MTA id: use with GET /v1/emails/{id}' }
+
+    BatchResult:
+      type: object
+      required: [index, status]
+      properties:
+        index: { type: integer }
+        status: { type: string, enum: [accepted, rejected] }
+        message_id: { type: [string, 'null'] }
+        recipients:
+          type: array
+          items:
+            type: object
+            required: [address, id]
+            properties:
+              address: { type: string }
+              id: { type: string }
+        error: { type: string }
+        code: { type: string }
+        field: { type: string }
+
+    EmailStatus:
+      type: string
+      enum: [delivered, delayed, waiting, bounced, expired, complained]
+
+    EmailResponse:
+      type: object
+      required: [code, enhanced, text]
+      properties:
+        code: { type: integer }
+        enhanced: { type: [string, 'null'] }
+        text: { type: string }
+
+    EmailSummary:
+      type: object
+      required: [id, messageId, recipient, tenant, campaign, app, status, firstAt, at, tries, provider, moved, reason, bounceClass, response, held]
+      properties:
+        id: { type: string, description: 'The MTA id' }
+        messageId: { type: [string, 'null'] }
+        recipient: { type: string }
+        tenant: { type: string }
+        campaign: { type: [string, 'null'] }
+        app: { type: [string, 'null'] }
+        status: { $ref: '#/components/schemas/EmailStatus' }
+        firstAt: { type: string, format: date-time }
+        at: { type: string, format: date-time }
+        tries: { type: integer }
+        provider: { type: string, description: 'gmail, outlook, yahoo, apple or other' }
+        moved: { type: boolean }
+        reason: { type: [string, 'null'] }
+        bounceClass: { type: [string, 'null'] }
+        response:
+          oneOf:
+            - { $ref: '#/components/schemas/EmailResponse' }
+            - { type: 'null' }
+        held:
+          oneOf:
+            - type: object
+              properties:
+                until: { type: [string, 'null'] }
+                by: { type: string, enum: [pause, limit, no-source, other] }
+            - { type: 'null' }
+
+    EmailList:
+      type: object
+      required: [emails, next, since]
+      properties:
+        emails:
+          type: array
+          items: { $ref: '#/components/schemas/EmailSummary' }
+        next: { type: [string, 'null'], description: 'Pass as `before` for the next page' }
+        since: { type: string, format: date-time }
+
+    EmailEvent:
+      type: object
+      required: [at, kind]
+      additionalProperties: true
+      properties:
+        at: { type: string, format: date-time }
+        kind: { type: string, enum: [received, held, delayed, delivered, bounced, removed, expired, complained] }
+        try: { type: integer }
+        response: { $ref: '#/components/schemas/EmailResponse' }
+        reason: { type: [string, 'null'] }
+        bounceClass: { type: [string, 'null'] }
+        source: { type: [string, 'null'] }
+        sourceAddress: { type: [string, 'null'] }
+        server: { type: [string, 'null'] }
+        tls: { type: [string, 'null'] }
+        until: { type: [string, 'null'] }
+
+    EmailDetail:
+      type: object
+      required: [email, events, updates]
+      properties:
+        email:
+          allOf:
+            - { $ref: '#/components/schemas/EmailSummary' }
+            - type: object
+              properties:
+                from: { type: [string, 'null'] }
+                returnPath: { type: [string, 'null'] }
+                subscriber: { type: [string, 'null'] }
+        events:
+          type: array
+          items: { $ref: '#/components/schemas/EmailEvent' }
+        updates:
+          type: array
+          description: Webhook updates sent about this email. The API worker documents the item shape from emails.ts.
+          items: { type: object, additionalProperties: true }
+
+    DnsRecord:
+      type: object
+      required: [for, type, name, value, status]
+      properties:
+        for: { type: string, enum: [signature, permission, fakes] }
+        type: { type: string }
+        name: { type: string }
+        value: { type: string }
+        status: { type: string, enum: [found, missing, wrong] }
+
+    Domain:
+      type: object
+      required: [id, name, sender, verified, records, checked_at]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        sender: { type: string }
+        verified: { type: boolean }
+        records:
+          type: array
+          items: { $ref: '#/components/schemas/DnsRecord' }
+        checked_at: { type: [string, 'null'], format: date-time }
+
+    WebhookBody:
+      description: What a webhook POSTs, signed in X-CC-Signature. The SDKs' webhooks.verify returns it.
+      type: object
+      required: [webhook, delivery, events]
+      properties:
+        webhook: { type: string }
+        delivery: { type: string }
+        test: { type: boolean }
+        events:
+          type: array
+          items: { $ref: '#/components/schemas/WebhookEvent' }
+
+    WebhookEvent:
+      type: object
+      required: [id, type, at, tenant, message]
+      properties:
+        id: { type: string, description: 'Stays the same on a retry: deduplicate on it' }
+        type: { type: string, enum: [message.received, message.delivered, message.deferred, message.bounced, message.expired, message.complained] }
+        at: { type: string, format: date-time }
+        tenant: { type: string }
+        message:
+          type: object
+          required: [id, mtaId, recipient, subscriber, campaign]
+          properties:
+            id: { type: [string, 'null'] }
+            mtaId: { type: [string, 'null'] }
+            recipient: { type: string }
+            subscriber: { type: [string, 'null'] }
+            campaign: { type: [string, 'null'] }
+        attempts: { type: integer }
+        response: { $ref: '#/components/schemas/EmailResponse' }
+        bounce:
+          type: object
+          properties:
+            class: { type: [string, 'null'] }
+            kind: { type: string, enum: [remote, admin, report] }
+        complaint:
+          type: object
+          properties:
+            type: { type: [string, 'null'] }
+            reporter: { type: [string, 'null'] }
