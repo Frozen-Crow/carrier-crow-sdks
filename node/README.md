@@ -30,7 +30,12 @@ const message = {
   attachments: [{ filename: 'receipt.txt', content: Buffer.from('Receipt').toString('base64'), content_type: 'text/plain' }],
 };
 const sent = await crow.emails.send(message, { idempotencyKey: 'receipt-48213' });
-console.log(sent.message_id, sent.recipients[0].id);
+const id = sent.recipients[0].id;
+if (id === null) {
+  console.log('Accepted; find it later by message_id:', sent.message_id);
+} else {
+  console.log(id);
+}
 const batch = await crow.emails.batch([message], { idempotencyKey: 'receipts-batch-1' });
 for (const result of batch.results) {
   if (result.status === 'rejected') console.error(result.index, result.error, result.field);
@@ -42,8 +47,10 @@ Use at least one of `html` or `text`, at most 50 recipients across `to`, `cc` an
 ## Read emails and page results
 
 ```ts
-const detail = await crow.emails.get(sent.recipients[0].id);
-console.log(detail.email.status, detail.events, detail.updates);
+if (id !== null) {
+  const detail = await crow.emails.get(id);
+  console.log(detail.email.status, detail.events, detail.updates);
+}
 const page = await crow.emails.list({ q: '@example.net', status: ['delayed', 'waiting'], app: 'shop', days: 7, limit: 100 });
 if (page.next) {
   const next = await crow.emails.list({ q: '@example.net', status: ['delayed', 'waiting'], app: 'shop', days: 7, limit: 100, before: page.next });
@@ -105,3 +112,7 @@ npm test
 ```
 
 Builds emit `dist/esm` and `dist/cjs`, each with declarations. Tests use Node's test runner and a local HTTP server, plus `../test-vectors/webhooks.json`. No service credentials or remote API calls are needed.
+
+A 202 means every recipient was accepted, including when an ID is null.
+A refused recipient fails the send with 422 or 429 and an indexed `field`
+such as `to[1]`; no recipients were sent.

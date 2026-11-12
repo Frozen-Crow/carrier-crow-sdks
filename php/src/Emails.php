@@ -9,10 +9,12 @@ class Emails
     public function __construct(private CarrierCrow $client)
     {
     }
+    /** @return array{object: string, status: string, message_id: ?string, recipients: list<array{address: string, id: ?string}>} */
     public function send(array $params, array $options = []): array
     {
         return $this->client->request('POST', '/v1/emails', $params, options: $options, send: true);
     }
+    /** @return array{results: list<array{index: int, status: string, message_id?: ?string, recipients?: list<array{address: string, id: ?string}>, error?: string, code?: string, field?: string}>} */
     public function batch(array $emails, array $options = []): array
     {
         return $this->client->request('POST', '/v1/emails/batch', ['emails' => $emails], options: $options, send: true);

@@ -46,6 +46,32 @@ final class ClientTest extends TestCase
         $state['responses'] = $responses;
         file_put_contents($this->state, json_encode($state));
     }
+    public function testNullRecipientId(): void
+    {
+        $accepted = ['status' => 'accepted', 'message_id' => 'order-1', 'recipients' => [['address' => 'b@example.com', 'id' => null]]];
+        $this->responses([[202, ['object' => 'email'] + $accepted], [200, ['results' => [['index' => 0] + $accepted]]]]);
+        $sent = $this->client->emails->send([]);
+        self::assertArrayHasKey('id', $sent['recipients'][0]);
+        self::assertNull($sent['recipients'][0]['id']);
+        self::assertSame('order-1', $sent['message_id']);
+        $batch = $this->client->emails->batch([[]]);
+        self::assertArrayHasKey('id', $batch['results'][0]['recipients'][0]);
+        self::assertNull($batch['results'][0]['recipients'][0]['id']);
+        self::assertCount(2, $this->state()['requests']);
+    }
+    public function testRecipientRefusalField(): void
+    {
+        $this->responses([[422, ['error' => 'Recipient refused', 'code' => 'rejected', 'field' => 'to[1]']]]);
+        try {
+            $this->client->emails->send([]);
+            self::fail();
+        } catch (Error $e) {
+            self::assertSame(422, $e->status);
+            self::assertSame('rejected', $e->codeName);
+            self::assertSame('to[1]', $e->field);
+        }
+        self::assertCount(1, $this->state()['requests']);
+    }
     public function testEveryMethod(): void
     {
         $this->client->emails->send(['from' => 'a', 'text' => 'hello']);

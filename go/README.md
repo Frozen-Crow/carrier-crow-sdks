@@ -25,7 +25,12 @@ result, err := client.Emails.Send(ctx, cc.SendEmail{
     MessageID: "order-48213",
 }, cc.SendOptions{IdempotencyKey: "order-48213"})
 if err != nil { log.Fatal(err) }
-log.Print(result.Recipients)
+id := result.Recipients[0].ID // *string; nil when the node reported no usable ID
+if id == nil {
+    log.Print("Accepted; find it later by message_id: ", result.MessageID)
+} else {
+    log.Print(*id)
+}
 ```
 
 All HTTP methods accept a context. Configure the endpoint, HTTP client, and retries with
@@ -47,9 +52,11 @@ batch, err := client.Emails.Batch(ctx, []cc.SendEmail{
 if err != nil { log.Fatal(err) }
 for _, item := range batch.Results { log.Print(item.Status, item.Error) }
 
-story, err := client.Emails.Get(ctx, result.Recipients[0].ID)
-if err != nil { log.Fatal(err) }
-log.Print(story.Email.Status, story.Events, story.Updates)
+if id != nil {
+    story, err := client.Emails.Get(ctx, *id)
+    if err != nil { log.Fatal(err) }
+    log.Print(story.Email.Status, story.Events, story.Updates)
+}
 
 err = client.Emails.EachPage(ctx, cc.ListQuery{
     Status: []cc.EmailStatus{cc.Delivered, cc.Delayed}, Days: 7, Limit: 100,
@@ -110,3 +117,7 @@ Run the mock HTTP server and shared webhook vector tests from this directory:
 go test ./...
 go vet ./...
 ```
+
+A 202 means every recipient was accepted, including when an ID is null.
+A refused recipient fails the send with 422 or 429 and an indexed `field`
+such as `to[1]`; no recipients were sent.

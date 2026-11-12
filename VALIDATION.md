@@ -67,3 +67,33 @@ Commands rerun for this fix pass are the commands in the table above, plus
 `npm test --prefix node` and `python/.venv/bin/ruff format --check python`;
 all passed. `git diff --check` passed and the diff for `openapi/` and
 `CONTRACT.md` is empty. No packages were published.
+
+## Nullable recipient IDs and atomic recipient refusal
+
+Revalidated on 2026-11-12 after contract commit `fabdd5f`. Send and batch
+recipient IDs now accept null: TypeScript `string | null`, Python
+`Optional[str]`, Go `*string` (nil preserves JSON null), PHP array shapes
+with `?string`, and Ruby hashes with nil. Every SDK README checks the ID
+before reading an email and explains later lookup by `message_id`.
+
+Each suite adds a 202/null-ID test that also checks batch parsing, plus a
+422 send-refusal test asserting `field: "to[1]"` and a single request.
+Existing error handling already preserves indexed fields; no retry or
+acceptance behavior needed changing.
+
+Local commands and results for this change:
+
+- `npm test --prefix node`: strict ESM/CJS/declaration builds; 15 tests passed.
+- `python/.venv/bin/pytest python/tests -q`: 35 tests passed.
+- `python/.venv/bin/ruff check python` and
+  `python/.venv/bin/ruff format --check python`: passed.
+- `python/.venv/bin/mypy --strict python/src/carriercrow`: passed (2 files).
+- `cd go && go test -count=1 ./... && go vet ./...`: passed.
+- `cd php && composer test && composer validate --no-check-publish`:
+  15 tests, 110 assertions passed; metadata valid.
+- `/opt/homebrew/opt/ruby/bin/ruby -I ruby/lib ruby/test/client_test.rb`:
+  18 tests, 172 assertions passed.
+- `git diff --check`: passed; `CONTRACT.md` and `openapi/` unchanged.
+
+GitHub Actions runs the existing seven runtime matrix jobs on this commit;
+CI results are recorded on draft PR #1 after push.

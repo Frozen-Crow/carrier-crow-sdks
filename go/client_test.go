@@ -27,7 +27,7 @@ func TestMethods(t *testing.T) {
 	}{
 		{"send", "POST", "/v1/emails", `{"object":"email","status":"accepted","message_id":null,"recipients":[{"address":"b@example.com","id":"mta"}]}`, email, func(c *Client) error {
 			v, e := c.Emails.Send(ctx, email, SendOptions{IdempotencyKey: "given"})
-			if e == nil && (v.MessageID != nil || v.Recipients[0].ID != "mta") {
+			if e == nil && (v.MessageID != nil || (v.Recipients[0].ID == nil || *v.Recipients[0].ID != "mta")) {
 				t.Fatal(v)
 			}
 			return e
@@ -450,5 +450,58 @@ func TestPagingCycle(t *testing.T) {
 	var api *Error
 	if !errors.As(err, &api) || api.Code != "invalid_response" || calls != 3 {
 		t.Fatal(err, calls)
+	}
+}
+
+func TestNullRecipientID(t *testing.T) {
+	calls := 0
+	accepted := `{"status":"accepted","message_id":"order-1","recipients":[{"address":"b@example.com","id":null}]}`
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path == "/v1/emails/batch" {
+			io.WriteString(w, `{"results":[{"index":0,`+accepted[1:]+`]}`)
+		} else {
+			w.WriteHeader(202)
+			io.WriteString(w, `{"object":"email",`+accepted[1:])
+		}
+	}))
+	defer server.Close()
+	client := New("ccm_test", Options{BaseURL: server.URL})
+	sent, err := client.Emails.Send(context.Background(), SendEmail{}, SendOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sent.Recipients) != 1 || sent.Recipients[0].ID != nil || sent.MessageID == nil || *sent.MessageID != "order-1" {
+		t.Fatal(sent)
+	}
+	batch, err := client.Emails.Batch(context.Background(), []SendEmail{{}}, SendOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(batch.Results) != 1 || len(batch.Results[0].Recipients) != 1 || batch.Results[0].Recipients[0].ID != nil {
+		t.Fatal(batch)
+	}
+	if calls != 2 {
+		t.Fatal(calls)
+	}
+}
+
+func TestRecipientRefusalField(t *testing.T) {
+	calls := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		w.WriteHeader(422)
+		io.WriteString(w, `{"error":"Recipient refused","code":"rejected","field":"to[1]"}`)
+	}))
+	defer server.Close()
+	client := New("ccm_test", Options{BaseURL: server.URL})
+	result, err := client.Emails.Send(context.Background(), SendEmail{}, SendOptions{})
+	var apiErr *Error
+	if result != nil || !errors.As(err, &apiErr) || apiErr.Status != 422 || apiErr.Code != "rejected" || apiErr.Field != "to[1]" {
+		t.Fatal(result, err)
+	}
+	if calls != 1 {
+		t.Fatal(calls)
 	}
 }

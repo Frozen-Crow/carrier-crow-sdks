@@ -410,3 +410,31 @@ test("missing API key raises a typed error", () => {
     if (previous !== undefined) process.env.CARRIERCROW_API_KEY = previous;
   }
 });
+
+test("accepted send and batch preserve null recipient IDs", async () => {
+  const accepted = { status: "accepted", message_id: "order-1", recipients: [{ address: "b@example.com", id: null }] };
+  await mock(
+    (req, res) => req.url.endsWith("/batch")
+      ? json(res, { results: [{ index: 0, ...accepted }] })
+      : json(res, { object: "email", ...accepted }, 202),
+    async (client, requests) => {
+      const sent = await client.emails.send(email);
+      assert.equal(sent.recipients[0].id, null);
+      assert.equal(sent.message_id, "order-1");
+      const batch = await client.emails.batch([email]);
+      assert.equal(batch.results[0].recipients[0].id, null);
+      assert.equal(requests.length, 2);
+    },
+  );
+});
+
+test("recipient refusal exposes indexed field on send error", async () => {
+  await mock(
+    (req, res) => json(res, { error: "Recipient refused", code: "rejected", field: "to[1]" }, 422),
+    async (client, requests) => {
+      await assert.rejects(client.emails.send(email), (e) =>
+        e instanceof CarrierCrowError && e.status === 422 && e.code === "rejected" && e.field === "to[1]");
+      assert.equal(requests.length, 1);
+    },
+  );
+});

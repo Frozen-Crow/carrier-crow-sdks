@@ -30,7 +30,12 @@ message = {
   message_id: 'order-48213', subscriber: 'customer-42', campaign: 'orders', app: 'orders'
 }
 result = client.emails.send(message, idempotency_key: 'order-48213')
-puts result['recipients'].first['id'] # MTA ID for get and webhook correlation
+id = result['recipients'].first['id'] # String or nil in send and batch results
+if id.nil?
+  puts "Accepted; find it later by message_id: #{result['message_id']}"
+else
+  puts id
+end
 batch = client.emails.batch([message], idempotency_key: 'batch-48213')
 batch['results'].each do |item|
   puts item['status'] # accepted or rejected; inspect error/code/field on rejection
@@ -43,10 +48,12 @@ array as `{"emails": [...]}`; individual rejections remain in `results`.
 ## Read and page emails
 
 ```ruby
-story = client.emails.get(result['recipients'].first['id'])
-puts story['email']['status']
-puts story['events']
-puts story['updates']
+unless id.nil?
+  story = client.emails.get(id)
+  puts story['email']['status']
+  puts story['events']
+  puts story['updates']
+end
 page = client.emails.list(q: 'customer@example.net', status: ['delivered', 'bounced'],
                           tenant: 'northwind', app: 'orders', days: 7, limit: 100)
 next_page = client.emails.list(before: page['next'], limit: 100) if page['next']
@@ -130,3 +137,7 @@ The minitest suite uses a local TCP HTTP mock and runs every case in
 No API credentials or external API connection are required.
 
 Missing API keys raise `CarrierCrow::Error` with `missing_api_key` at construction. The client option `max_retry_after` defaults to 60 seconds; responses above it raise immediately with `retry_after` preserved. Repeated pagination cursors raise `invalid_response`. Webhook verification uses the first timestamp and accepts lowercase v1 hex only.
+
+A 202 means every recipient was accepted, including when an ID is null.
+A refused recipient fails the send with 422 or 429 and an indexed `field`
+such as `to[1]`; no recipients were sent.

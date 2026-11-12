@@ -22,7 +22,7 @@ export interface SendEmail {
 }
 export interface Recipient {
   address: string;
-  id: string;
+  id: string | null;
 }
 export interface SendResult {
   object: "email";

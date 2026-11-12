@@ -307,3 +307,37 @@ def test_webhook_reference_edges(monkeypatch):
         webhooks.verify(body, f"t=1000,v1={digest.upper()}", secret)
     with pytest.raises(CarrierCrowError):
         webhooks.verify(body, f"t=1000,v1={digest}", secret, now=1300.9)
+
+
+def test_null_recipient_id_in_send_and_batch(server):
+    client, requests, replies = server
+    accepted = {
+        "status": "accepted",
+        "message_id": "test-1",
+        "recipients": [{"address": "b@example.com", "id": None}],
+    }
+    replies.extend(
+        [
+            (202, {"object": "email", **accepted}, {}),
+            (200, {"results": [{"index": 0, **accepted}]}, {}),
+        ]
+    )
+    sent = client.emails.send(SEND)
+    assert sent["recipients"][0]["id"] is None
+    assert sent["message_id"] == "test-1"
+    batch = client.emails.batch([SEND])
+    assert batch["results"][0]["recipients"][0]["id"] is None
+    assert len(requests) == 2
+
+
+def test_recipient_refusal_exposes_indexed_field(server):
+    client, requests, replies = server
+    replies.append(
+        (422, {"error": "Recipient refused", "code": "rejected", "field": "to[1]"}, {})
+    )
+    with pytest.raises(CarrierCrowError) as caught:
+        client.emails.send(SEND)
+    assert caught.value.status == 422
+    assert caught.value.code == "rejected"
+    assert caught.value.field == "to[1]"
+    assert len(requests) == 1

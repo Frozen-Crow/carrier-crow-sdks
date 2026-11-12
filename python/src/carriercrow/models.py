@@ -38,7 +38,7 @@ class SendEmail(SendRequired, total=False):
 
 class Recipient(TypedDict):
     address: str
-    id: str
+    id: Optional[str]
 
 
 class SendResult(TypedDict):

@@ -41,6 +41,29 @@ class ClientTest < Minitest::Test
     @thread.join
   end
 
+  def test_null_recipient_id
+    accepted = { status: 'accepted', message_id: 'order-1', recipients: [{ address: 'b@example.com', id: nil }] }
+    @responses.concat([[202, { object: 'email' }.merge(accepted)],
+                       [200, { results: [{ index: 0 }.merge(accepted)] }]])
+    sent = @client.emails.send({})
+    assert sent['recipients'][0].key?('id')
+    assert_nil sent['recipients'][0]['id']
+    assert_equal 'order-1', sent['message_id']
+    batch = @client.emails.batch([{}])
+    assert batch['results'][0]['recipients'][0].key?('id')
+    assert_nil batch['results'][0]['recipients'][0]['id']
+    assert_equal 2, @requests.length
+  end
+
+  def test_recipient_refusal_field
+    @responses << [422, { error: 'Recipient refused', code: 'rejected', field: 'to[1]' }]
+    error = assert_raises(CarrierCrow::Error) { @client.emails.send({}) }
+    assert_equal 422, error.status
+    assert_equal 'rejected', error.code
+    assert_equal 'to[1]', error.field
+    assert_equal 1, @requests.length
+  end
+
   def test_every_method
     @client.emails.send({ from: 'a', text: 'hello' })
     @client.emails.batch([{ to: 'b' }])

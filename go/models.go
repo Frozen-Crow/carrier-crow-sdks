@@ -41,8 +41,8 @@ type SendEmail struct {
 	App         string            `json:"app,omitempty"`
 }
 type Recipient struct {
-	Address string `json:"address"`
-	ID      string `json:"id"`
+	Address string  `json:"address"`
+	ID      *string `json:"id"`
 }
 type SendResult struct {
 	Object     string      `json:"object"`

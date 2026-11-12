@@ -32,8 +32,13 @@ $email = [
     ]],
 ];
 $result = $cc->emails->send($email, ['idempotencyKey' => 'order-48213']);
-$detail = $cc->emails->get($result['recipients'][0]['id']);
-var_dump($detail['email']['messageId'], $detail['events'], $detail['updates']);
+$id = $result['recipients'][0]['id']; // ?string in send and batch results
+if ($id === null) {
+    echo 'Accepted; find it later by message_id: ' . $result['message_id'];
+} else {
+    $detail = $cc->emails->get($id);
+    var_dump($detail['email']['messageId'], $detail['events'], $detail['updates']);
+}
 $batch = $cc->emails->batch([$email], ['idempotencyKey' => 'batch-48213']);
 // Batch results can contain individual rejected entries without throwing.
 foreach ($batch['results'] as $entry) {
@@ -94,3 +99,7 @@ foreach ($event['events'] as $item) {
 Run `composer install` and `composer test` from `php/`. Tests use a local PHP HTTP server and the shared `../test-vectors/webhooks.json`; injected Guzzle network failures also verify safe retry behavior. The client accepts `httpClient` (a Guzzle ClientInterface) and `sleep` (seconds callback) options for custom transports and deterministic tests.
 
 Missing API keys raise `missing_api_key` at construction. `maxRetryAfter` defaults to 60 seconds; responses above it are raised immediately with `retryAfter` preserved. Repeated pagination cursors raise `invalid_response`. `CarrierCrow\Error` remains a deprecated alias of `CarrierCrowException`. Webhook verification uses the first timestamp and accepts lowercase v1 hex only.
+
+A 202 means every recipient was accepted, including when an ID is null.
+A refused recipient fails the send with 422 or 429 and an indexed `field`
+such as `to[1]`; no recipients were sent.

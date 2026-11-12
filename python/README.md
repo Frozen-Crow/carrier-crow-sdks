@@ -24,8 +24,12 @@ with CarrierCrow() as client:
         },
         idempotency_key="order-42",
     )
-    story = client.emails.get(sent["recipients"][0]["id"])
-    print(story["email"]["messageId"], story["events"], story["updates"])
+    recipient_id = sent["recipients"][0]["id"]
+    if recipient_id is None:
+        print("Accepted; find it later by message_id:", sent["message_id"])
+    else:
+        story = client.emails.get(recipient_id)
+        print(story["email"]["messageId"], story["events"], story["updates"])
     for email in client.emails.iter({"status": ["delivered"], "limit": 100}):
         print(email["id"], email["status"])
     # pages(query) yields full pages; list(query) returns one page.
@@ -64,3 +68,7 @@ for event in parsed["events"]:
 window and raises `CarrierCrowError` on invalid signatures or JSON. `now=` is
 available for deterministic tests. The fixtures use only fake credentials and
 all HTTP tests run against a local mock server.
+
+A 202 means every recipient was accepted, including when an ID is null.
+A refused recipient fails the send with 422 or 429 and an indexed `field`
+such as `to[1]`; no recipients were sent.

@@ -122,6 +122,7 @@ module CarrierCrow
       @client = client
     end
 
+    # Recipient IDs in send and batch results are String or nil.
     def send(params, **options)
       @client.request('post', '/v1/emails', body: params, send_request: true, **options)
     end
