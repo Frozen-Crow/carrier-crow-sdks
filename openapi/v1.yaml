@@ -280,7 +280,7 @@ components:
             required: [address, id]
             properties:
               address: { type: string }
-              id: { type: string, pattern: '^[0-9a-f]{32}$', description: 'The MTA id: use with GET /v1/emails/{id}' }
+              id: { type: [string, 'null'], pattern: '^[0-9a-f]{32}$', description: 'The MTA id: use with GET /v1/emails/{id}. Null only when the node accepted the email without reporting a usable id; find it later by message_id' }
 
     BatchResult:
       type: object
@@ -296,7 +296,7 @@ components:
             required: [address, id]
             properties:
               address: { type: string }
-              id: { type: string }
+              id: { type: [string, 'null'], description: 'As SendResult recipients[].id' }
         error: { type: string }
         code: { type: string }
         field: { type: string }

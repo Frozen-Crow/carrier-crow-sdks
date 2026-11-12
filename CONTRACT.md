@@ -105,8 +105,19 @@ Body:
 
 Each recipient's `id` is the MTA's ID from the submission's `250` reply, the
 same ID `GET /v1/emails/{id}` and the webhooks' `message.mtaId` use. If the
-node returns one ID for the whole message, every recipient carries it.
-`message_id` is null when none was given.
+node returns one ID for the whole message, every recipient carries it; if it
+returns one per recipient, they are matched in order. Any other reply (no
+IDs, or a count that is neither one nor one per recipient) still means the
+email **was accepted**: every recipient's `id` is then `null`, the API logs it
+as an error, and the caller finds the email later by its `message_id`. An ID is
+never invented, and a `202` is never turned into an error that would invite a
+duplicate send. `message_id` is null when none was given.
+
+**All or nothing.** Every recipient is accepted or none is. If the node
+refuses any recipient, the API ends the SMTP transaction before `DATA`,
+nothing is sent, and the request fails as the refusal maps (contract §2,
+step 5) with `field` naming the address, e.g. `to[1]`. A `202` therefore
+always means every listed recipient was accepted.
 
 ### `POST /v1/emails/batch`
 
@@ -170,10 +181,20 @@ one path:
    `{ connectorId, exp: now + 60s, jti }`, signed HMAC-SHA256 with a new
    secret, `submission.tokenKey` (`SUBMISSION_TOKEN_KEY`).
 4. `api/src/auth-smtp.ts` accepts such a token for that connector when the
-   signature and expiry check out, skipping the connector's CIDR rule
-   (the API key's own checks already ran). Everything else stays as it is.
+   signature and expiry check out and its `jti` hasn't been used, skipping
+   the connector's CIDR rule (the API key's own checks already ran).
+   Everything else stays as it is.
 5. Map the reply: `250 … ids=…` → `202`; `4xx` → `429 rate_limited` (or
-   `503` if the node didn't answer); `5xx` → `422 rejected`.
+   `503` if the node didn't answer); `5xx` → `422 rejected`. The same mapping
+   applies to a refused `RCPT TO` (all or nothing, §1).
+
+**Kumo policy (changed in this change set).** The node's SMTP AUTH hook
+caches successful logins, and serves that cache when the control plane is
+unreachable. A `ccs_` token must never be cached or served from cache, or it
+could be replayed. `kumo/policy/init.lua` (not in git; deployed with node
+config) therefore sends every `ccs_` login to the control plane, and neither
+reads nor writes the cache for it. Until a node runs that policy, production
+leaves `SUBMISSION_TOKEN_KEY` unset, so HTTP sending stays off.
 
 Without `SUBMISSION_TOKEN_KEY`, `POST /v1/emails` answers `503 unavailable`
 with a sentence saying sending over the API isn't set up.
