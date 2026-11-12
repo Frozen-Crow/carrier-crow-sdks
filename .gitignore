@@ -7,3 +7,10 @@ vendor/
 .bundle/
 coverage/
 .DS_Store
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.gem
+.phpunit.result.cache
+.phpunit.cache/

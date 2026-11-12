@@ -1,0 +1,90 @@
+{
+  "now": 1805047200,
+  "secret": "whsec_test_shared_vectors",
+  "cases": [
+    {
+      "name": "valid",
+      "body": "{ \"webhook\":\"wh_test\", \"delivery\":\"del_test\", \"events\":[], \"note\":\"café 🐦\" }\n",
+      "signature": "t=1805047200,v1=1a9f7b7d6b518ded86283ce936ead780b3c5846883c63083ed42bd3c09ca8ca1",
+      "valid": true
+    },
+    {
+      "name": "tampered",
+      "body": "{ \"webhook\":\"wh_test\", \"delivery\":\"del_test\", \"events\":[], \"note\":\"café 🐦\" }\n ",
+      "signature": "t=1805047200,v1=1a9f7b7d6b518ded86283ce936ead780b3c5846883c63083ed42bd3c09ca8ca1",
+      "valid": false
+    },
+    {
+      "name": "expired",
+      "body": "{ \"webhook\":\"wh_test\", \"delivery\":\"del_test\", \"events\":[], \"note\":\"café 🐦\" }\n",
+      "signature": "t=1805046899,v1=53ffe4617f624e2a2ec396cbed429c7f858c03d0c77cb19aff7d8456493affb7",
+      "valid": false
+    },
+    {
+      "name": "future-expired",
+      "body": "{ \"webhook\":\"wh_test\", \"delivery\":\"del_test\", \"events\":[], \"note\":\"café 🐦\" }\n",
+      "signature": "t=1805047501,v1=8c3e4997a97812f78bcae34b60c2583bbb7f87c234ad19781f151f57597d3d4a",
+      "valid": false
+    },
+    {
+      "name": "multi-v1",
+      "body": "{ \"webhook\":\"wh_test\", \"delivery\":\"del_test\", \"events\":[], \"note\":\"café 🐦\" }\n",
+      "signature": "t=1805047200,v1=0000000000000000000000000000000000000000000000000000000000000000,v1=1a9f7b7d6b518ded86283ce936ead780b3c5846883c63083ed42bd3c09ca8ca1",
+      "valid": true
+    },
+    {
+      "name": "malformed",
+      "body": "{ \"webhook\":\"wh_test\", \"delivery\":\"del_test\", \"events\":[], \"note\":\"café 🐦\" }\n",
+      "signature": "v1=nothex",
+      "valid": false
+    },
+    {
+      "name": "malformed-timestamp",
+      "body": "{ \"webhook\":\"wh_test\", \"delivery\":\"del_test\", \"events\":[], \"note\":\"café 🐦\" }\n",
+      "signature": "t=oops,v1=1a9f7b7d6b518ded86283ce936ead780b3c5846883c63083ed42bd3c09ca8ca1",
+      "valid": false
+    },
+    {
+      "name": "wrong-secret",
+      "body": "{ \"webhook\":\"wh_test\", \"delivery\":\"del_test\", \"events\":[], \"note\":\"café 🐦\" }\n",
+      "signature": "t=1805047200,v1=0000000000000000000000000000000000000000000000000000000000000000",
+      "valid": false
+    },
+    {
+      "name": "boundary",
+      "body": "{ \"webhook\":\"wh_test\", \"delivery\":\"del_test\", \"events\":[], \"note\":\"café 🐦\" }\n",
+      "signature": "t=1805046900,v1=b54ffbd86baf0d6e50da2bceb461c7f7e8f83eff0a41a2abe19ae67b78c223ed",
+      "valid": true
+    },
+    {
+      "name": "future-boundary",
+      "body": "{ \"webhook\":\"wh_test\", \"delivery\":\"del_test\", \"events\":[], \"note\":\"café 🐦\" }\n",
+      "signature": "t=1805047500,v1=db140f35672369d60a50bc3f662baccf201a4316081692e26ea6de12b012cf30",
+      "valid": true
+    },
+    {
+      "name": "invalid-json",
+      "body": "not json",
+      "signature": "t=1805047200,v1=7d79cda7faeac208b1465a943de89dab37bdb5fd7420dc17220b7b4973fa2721",
+      "valid": false
+    },
+    {
+      "name": "duplicate-timestamp",
+      "body": "{ \"webhook\":\"wh_test\", \"delivery\":\"del_test\", \"events\":[], \"note\":\"café 🐦\" }\n",
+      "signature": "t=1805047200,v1=1a9f7b7d6b518ded86283ce936ead780b3c5846883c63083ed42bd3c09ca8ca1,t=1805047200",
+      "valid": false
+    },
+    {
+      "name": "missing-v1",
+      "body": "{ \"webhook\":\"wh_test\", \"delivery\":\"del_test\", \"events\":[], \"note\":\"café 🐦\" }\n",
+      "signature": "t=1805047200",
+      "valid": false
+    },
+    {
+      "name": "malformed-hex",
+      "body": "{ \"webhook\":\"wh_test\", \"delivery\":\"del_test\", \"events\":[], \"note\":\"café 🐦\" }\n",
+      "signature": "t=1805047200,v1=xyz",
+      "valid": false
+    }
+  ]
+}
