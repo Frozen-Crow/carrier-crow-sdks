@@ -1,0 +1,55 @@
+{
+  "name": "carriercrow",
+  "version": "0.1.0",
+  "description": "Carrier Crow SDK for Node.js",
+  "keywords": [
+    "email",
+    "transactional-email",
+    "smtp",
+    "webhooks",
+    "carriercrow"
+  ],
+  "homepage": "https://github.com/Frozen-Crow/carrier-crow-sdks/tree/main/node#readme",
+  "bugs": {
+    "url": "https://github.com/Frozen-Crow/carrier-crow-sdks/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Frozen-Crow/carrier-crow-sdks.git",
+    "directory": "node"
+  },
+  "author": "Frozen Crow Inc.",
+  "type": "module",
+  "main": "./dist/cjs/index.js",
+  "module": "./dist/esm/index.js",
+  "types": "./dist/esm/index.d.ts",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/esm/index.d.ts",
+        "default": "./dist/esm/index.js"
+      },
+      "require": {
+        "types": "./dist/cjs/index.d.ts",
+        "default": "./dist/cjs/index.js"
+      }
+    }
+  },
+  "files": [
+    "LICENSE",
+    "README.md",
+    "dist"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json && tsc -p tsconfig.cjs.json && node scripts/cjs.mjs",
+    "test": "npm run build && node --test test/*.test.mjs"
+  },
+  "devDependencies": {
+    "@types/node": "^18.19.0",
+    "typescript": "^5.7.0"
+  },
+  "license": "MIT"
+}

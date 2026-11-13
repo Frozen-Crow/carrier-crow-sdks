@@ -1,0 +1,60 @@
+name: PHP mirror
+# Packagist only reads a composer.json at the root of a repository, so php/
+# is copied, with its history, to Frozen-Crow/carrier-crow-php. That
+# repository is read-only: change the code here.
+#
+# On every push to main that touches php/, the mirror's main follows. A release
+# (release.yml) also tags the mirror with the release's version, which is what
+# Packagist publishes.
+on:
+  push:
+    branches: [main]
+    paths: ['php/**']
+  workflow_dispatch:
+  workflow_call:
+    inputs:
+      tag:
+        description: Version tag to put on the mirror, like v0.1.0
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: php-mirror
+  cancel-in-progress: false
+
+jobs:
+  mirror:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Split php/ into its own history
+        # The split is deterministic: the same history always gives the same
+        # commits, so the mirror only ever moves forward.
+        run: git subtree split --prefix=php -b php-mirror
+      - name: Push to carrier-crow-php
+        env:
+          DEPLOY_KEY: ${{ secrets.PHP_MIRROR_DEPLOY_KEY }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$DEPLOY_KEY" > ~/.ssh/mirror_key && chmod 600 ~/.ssh/mirror_key
+          ssh-keyscan -t ed25519 github.com >> ~/.ssh/known_hosts 2>/dev/null
+          export GIT_SSH_COMMAND="ssh -i ~/.ssh/mirror_key -o IdentitiesOnly=yes"
+          remote=git@github.com:Frozen-Crow/carrier-crow-php.git
+          # Releases run from a tag: mirror main only from main itself.
+          if [[ "$GITHUB_REF" == refs/heads/main ]]; then
+            git push "$remote" php-mirror:refs/heads/main
+          fi
+          if [[ -n "$TAG" ]]; then
+            if git ls-remote --exit-code --tags "$remote" "refs/tags/$TAG" >/dev/null; then
+              echo "$TAG is already on the mirror; skipping"
+            else
+              git push "$remote" "php-mirror:refs/tags/$TAG"
+            fi
+          fi
+          rm -f ~/.ssh/mirror_key
