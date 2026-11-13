@@ -1,6 +1,12 @@
 # Carrier Crow PHP SDK
 
-Requires PHP 8.1+ and Composer. For this source checkout run `composer install` in `php/` and require `vendor/autoload.php`.
+Requires PHP 8.1+.
+
+```sh
+composer require carriercrow/carriercrow
+```
+
+This package is developed in [carrier-crow-sdks](https://github.com/Frozen-Crow/carrier-crow-sdks) under `php/`; [carrier-crow-php](https://github.com/Frozen-Crow/carrier-crow-php) is a read-only copy for Packagist. Open issues and pull requests on carrier-crow-sdks.
 
 ```php
 require 'vendor/autoload.php';

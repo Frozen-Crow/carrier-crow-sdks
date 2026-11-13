@@ -3,8 +3,6 @@
 Requires Go 1.21 or newer; uses only the standard library.
 
 ```sh
-# In your application module, point to this local checkout:
-go mod edit -replace github.com/Frozen-Crow/carrier-crow-sdks/go=/absolute/path/to/carrier-crow-sdks/go
 go get github.com/Frozen-Crow/carrier-crow-sdks/go
 ```
 

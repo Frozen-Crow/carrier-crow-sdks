@@ -1,6 +1,10 @@
 # Carrier Crow for Node.js
 
-TypeScript SDK for Node.js 18+, with ESM, CommonJS and declarations. No runtime dependencies. This package is not published yet; build locally with `npm ci && npm run build` in `node/`, then install its directory (`npm install /path/to/sdks/node`).
+TypeScript SDK for Node.js 18+, with ESM, CommonJS and declarations. No runtime dependencies.
+
+```sh
+npm install carriercrow
+```
 
 ```ts
 import CarrierCrow, { CarrierCrowError, webhooks } from 'carriercrow';

@@ -1,0 +1,134 @@
+name: Release
+# Pushing a tag like v0.1.0 publishes every SDK at that version.
+#
+# npm, PyPI and RubyGems use trusted publishing: each registry trusts this
+# workflow, in the `release` environment, through GitHub's OIDC token, so no
+# registry token is stored anywhere. Go is published by tagging go/vX.Y.Z, and
+# PHP by pushing php/ to the carrier-crow-php mirror, which Packagist reads.
+#
+# Each job skips a version its registry already has, so a failed run can be
+# re-run without publishing anything twice. RELEASING.md has the setup.
+on:
+  push:
+    tags: ['v[0-9]+.[0-9]+.[0-9]+']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  versions:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: v
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+      - run: scripts/check-versions.sh "${{ steps.v.outputs.version }}"
+
+  tests:
+    needs: versions
+    uses: ./.github/workflows/test.yml
+
+  npm:
+    needs: [versions, tests]
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      contents: read
+      id-token: write
+    defaults:
+      run:
+        working-directory: node
+    steps:
+      - uses: actions/checkout@v4
+      # Node 24 ships npm 11, which trusted publishing needs.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+      - id: have
+        run: |
+          if npm view "carriercrow@${{ needs.versions.outputs.version }}" version >/dev/null 2>&1; then
+            echo "published=true" >> "$GITHUB_OUTPUT"
+            echo "carriercrow ${{ needs.versions.outputs.version }} is already on npm; skipping"
+          fi
+      - if: steps.have.outputs.published != 'true'
+        run: npm ci && npm run build
+      - if: steps.have.outputs.published != 'true'
+        run: npm publish --access public
+
+  pypi:
+    needs: [versions, tests]
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - run: python -m pip install --upgrade build && python -m build python --outdir dist
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist
+          skip-existing: true
+
+  rubygems:
+    needs: [versions, tests]
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      contents: read
+      id-token: write
+    defaults:
+      run:
+        working-directory: ruby
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.3'
+      - id: have
+        run: |
+          v="${{ needs.versions.outputs.version }}"
+          if curl -fsS https://rubygems.org/api/v1/versions/carriercrow.json 2>/dev/null | ruby -rjson -e 'exit(JSON.parse(STDIN.read).any? { |r| r["number"] == ARGV[0] } ? 0 : 1)' "$v"; then
+            echo "published=true" >> "$GITHUB_OUTPUT"
+            echo "carriercrow $v is already on RubyGems; skipping"
+          fi
+      - if: steps.have.outputs.published != 'true'
+        uses: rubygems/configure-rubygems-credentials@v2.1.0
+      - if: steps.have.outputs.published != 'true'
+        run: gem build carriercrow.gemspec && gem push "carriercrow-${{ needs.versions.outputs.version }}.gem"
+
+  go:
+    needs: [versions, tests]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      # A module in a subfolder is versioned by tags prefixed with its path.
+      - run: |
+          tag="go/v${{ needs.versions.outputs.version }}"
+          if git ls-remote --exit-code --tags origin "refs/tags/$tag" >/dev/null; then
+            echo "$tag already exists; skipping"
+          else
+            git tag "$tag" "$GITHUB_SHA"
+            git push origin "refs/tags/$tag"
+          fi
+      # Ask the Go proxy for it, so pkg.go.dev and `go get` see it straight away.
+      - run: curl -fsS "https://proxy.golang.org/github.com/!frozen-!crow/carrier-crow-sdks/go/@v/v${{ needs.versions.outputs.version }}.info" || echo "the proxy will pick the tag up on first use"
+
+  php:
+    needs: [versions, tests]
+    uses: ./.github/workflows/php-mirror.yml
+    with:
+      tag: v${{ needs.versions.outputs.version }}
+    secrets: inherit

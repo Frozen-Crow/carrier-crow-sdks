@@ -1,12 +1,12 @@
 # Carrier Crow for Ruby
 
 Ruby 3.1+ client using `net/http`, with no runtime gem dependencies.
-Install from this checkout with `gem build carriercrow.gemspec` and
-`gem install ./carriercrow-0.1.0.gem`, or use a Bundler path dependency:
 
-```ruby
-gem 'carriercrow', path: '/path/to/api-sdks-mcp/ruby'
+```sh
+gem install carriercrow
 ```
+
+Or in a Gemfile: `gem 'carriercrow'`.
 
 ## Send and batch
 

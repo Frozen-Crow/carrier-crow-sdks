@@ -1,12 +1,9 @@
 # Carrier Crow for Python
 
-Python 3.9+, synchronous HTTP via httpx. Install from this checkout:
+Python 3.9+, synchronous HTTP via httpx.
 
 ```sh
-python3 -m venv .venv
-. .venv/bin/activate
-pip install -e './python[test]'
-pytest python/tests -q
+pip install carriercrow
 ```
 
 ```python
