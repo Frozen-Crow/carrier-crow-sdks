@@ -93,7 +93,7 @@ test("all seven API methods, full wire body, headers and escaped paths", async (
       assert.equal(requests[1].headers["idempotency-key"], "batch");
       for (const req of requests) {
         assert.equal(req.headers.authorization, "Bearer ccm_test");
-        assert.equal(req.headers["user-agent"], "carriercrow-node/0.1.0");
+        assert.equal(req.headers["user-agent"], "carriercrow-node/0.2.0");
         assert.equal(req.headers.accept, "application/json");
       }
       assert.equal(requests[0].headers["content-type"], "application/json");
@@ -437,4 +437,17 @@ test("recipient refusal exposes indexed field on send error", async () => {
       assert.equal(requests.length, 1);
     },
   );
+});
+
+test("stream is optional on sends and individual batch emails", async () => {
+  await mock((req, res) => json(res, { ok: true }), async (client, requests) => {
+    await client.emails.send({ ...email, stream: "receipts" });
+    await client.emails.send(email);
+    await client.emails.batch([{ ...email, stream: "receipts" }, { ...email, stream: "news" }, email]);
+    assert.equal(requests[0].body.stream, "receipts");
+    assert.equal(Object.hasOwn(requests[1].body, "stream"), false);
+    assert.equal(requests[2].body.emails[0].stream, "receipts");
+    assert.equal(requests[2].body.emails[1].stream, "news");
+    assert.equal(Object.hasOwn(requests[2].body.emails[2], "stream"), false);
+  });
 });

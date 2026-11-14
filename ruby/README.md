@@ -94,7 +94,7 @@ Client options are `base_url`, `retries` (default 2 additional attempts),
 `sleeper` callable. Reads and domain checks retry 429, 503, and network failures
 with exponential backoff and jitter, honoring a numeric `Retry-After` minimum.
 Other HTTP failures are raised immediately. Every request sends
-`User-Agent: carriercrow-ruby/0.1.0` and bearer authentication.
+`User-Agent: carriercrow-ruby/0.2.0` and bearer authentication.
 
 Sends and batches without a key make exactly one attempt, even when client
 retries are configured. A supplied `idempotency_key` enables the client retry
@@ -141,3 +141,10 @@ Missing API keys raise `CarrierCrow::Error` with `missing_api_key` at constructi
 A 202 means every recipient was accepted, including when an ID is null.
 A refused recipient fails the send with 422 or 429 and an indexed `field`
 such as `to[1]`; no recipients were sent.
+
+Set the optional stream string in the send body (`stream: 'receipts'`) or in each email
+body passed to batch. It is sent as the JSON field `stream`; omit it to use
+the app's stream. Each batch email may select a different stream. A stream
+outside the app's sender returns HTTP 422 with `code: "invalid_stream"` and
+`field: "stream"`; in a batch, inspect the individual rejected result's
+`code` and `field`.

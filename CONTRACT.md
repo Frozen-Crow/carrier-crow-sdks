@@ -88,6 +88,7 @@ Body:
 | `message_id` | string | your ID for the email, sent as `X-CC-Message-Id`, max 255 |
 | `subscriber` | string | your ID for the recipient, sent as `X-CC-Subscriber`, max 255 |
 | `campaign` | string | sent as `X-CC-Campaign`: 1–128 of `A-Za-z0-9_.-`, starting with a letter or digit |
+| `stream` | string | optional; defaults to the app's stream. Must belong to the app's sender; otherwise `422` with `code: "invalid_stream"`, `field: "stream"` |
 | `app` | string | the app's name. Required for OAuth tokens, optional for bound keys |
 
 `202 Accepted`:
@@ -130,6 +131,9 @@ for the whole batch. `200`:
   { "index": 1, "status": "rejected", "error": "…", "code": "invalid_request", "field": "to" }
 ] }
 ```
+
+Each email may specify its own `stream`; omission uses the app's stream.
+An invalid stream rejects that item with `code: "invalid_stream"` and `field: "stream"`.
 
 One bad email doesn't stop the others. A malformed batch as a whole (not an
 array, more than 100) is a `400`.

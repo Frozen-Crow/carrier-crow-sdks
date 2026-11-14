@@ -25,6 +25,7 @@ type Attachment struct {
 	ContentType string `json:"content_type,omitempty"`
 }
 type SendEmail struct {
+	Stream      string            `json:"stream,omitempty"`
 	From        string            `json:"from"`
 	To          Addresses         `json:"to"`
 	CC          Addresses         `json:"cc,omitempty"`

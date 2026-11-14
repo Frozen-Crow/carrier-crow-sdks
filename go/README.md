@@ -119,3 +119,10 @@ go vet ./...
 A 202 means every recipient was accepted, including when an ID is null.
 A refused recipient fails the send with 422 or 429 and an indexed `field`
 such as `to[1]`; no recipients were sent.
+
+Set the optional stream string in the send body (`Stream: "receipts"`) or in each email
+body passed to batch. It is sent as the JSON field `stream`; omit it to use
+the app's stream. Each batch email may select a different stream. A stream
+outside the app's sender returns HTTP 422 with `code: "invalid_stream"` and
+`field: "stream"`; in a batch, inspect the individual rejected result's
+`code` and `field`.

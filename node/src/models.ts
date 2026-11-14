@@ -5,6 +5,7 @@ export interface Attachment {
   content_type?: string;
 }
 export interface SendEmail {
+  stream?: string;
   from: string;
   to: Addresses;
   subject: string;
@@ -43,6 +44,7 @@ export interface BatchResponse {
   results: BatchResult[];
 }
 export type ErrorCode =
+  | "invalid_stream"
   | "invalid_request"
   | "unauthorized"
   | "forbidden"
