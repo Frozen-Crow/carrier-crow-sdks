@@ -114,7 +114,7 @@ def test_every_request(server):
     ]
     for _, _, headers, _ in requests:
         assert headers["Authorization"] == "Bearer ccm_test_key"
-        assert headers["User-Agent"] == "carriercrow-python/0.1.0"
+        assert headers["User-Agent"] == "carriercrow-python/0.2.0"
     assert requests[0][2]["Idempotency-Key"] == "test-key"
     assert requests[0][2]["Content-Type"] == "application/json"
     assert requests[0][3] == SEND
@@ -341,3 +341,17 @@ def test_recipient_refusal_exposes_indexed_field(server):
     assert caught.value.code == "rejected"
     assert caught.value.field == "to[1]"
     assert len(requests) == 1
+
+
+def test_optional_stream(server):
+    client, requests, replies = server
+    replies.extend((200, {}, {}) for _ in range(3))
+    client.emails.send({**SEND, "stream": "receipts"})
+    client.emails.send(SEND)
+    client.emails.batch([{**SEND, "stream": "receipts"}, {**SEND, "stream": "news"}, SEND])
+    assert requests[0][3]["stream"] == "receipts"
+    assert "stream" not in requests[1][3]
+    emails = requests[2][3]["emails"]
+    assert emails[0]["stream"] == "receipts"
+    assert emails[1]["stream"] == "news"
+    assert "stream" not in emails[2]

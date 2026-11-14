@@ -33,6 +33,7 @@ class SendEmail(SendRequired, total=False):
     message_id: str
     subscriber: str
     campaign: str
+    stream: str
     app: str
 
 

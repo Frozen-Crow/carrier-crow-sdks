@@ -1,6 +1,6 @@
 Gem::Specification.new do |s|
   s.name = 'carriercrow'
-  s.version = '0.1.0'
+  s.version = '0.2.0'
   s.summary = 'Carrier Crow email API client'
   s.description = 'Send email through Carrier Crow, read what happened to it, check your domains and verify webhook signatures.'
   s.homepage = 'https://github.com/Frozen-Crow/carrier-crow-sdks/tree/main/ruby'

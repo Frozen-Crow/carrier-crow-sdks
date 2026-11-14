@@ -31,6 +31,13 @@ if id == nil {
 }
 ```
 
+Choose a stream by adding its name to the send body (`Stream: "receipts"`) or to each email
+body passed to batch. It is sent as the JSON field `stream`; omit it to use
+the app's stream. Each batch email may select a different stream. A stream
+outside the app's sender returns HTTP 422 with `code: "invalid_stream"` and
+`field: "stream"`; in a batch, inspect the individual rejected result's
+`code` and `field`.
+
 All HTTP methods accept a context. Configure the endpoint, HTTP client, and retries with
 `cc.New("ccm_...", cc.Options{BaseURL: "http://localhost:3000", MaxRetries: 2})`.
 The default endpoint is `https://api.mta.carriercrow.com`, the HTTP timeout is 30 seconds,

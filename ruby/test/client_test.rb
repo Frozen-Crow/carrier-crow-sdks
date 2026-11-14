@@ -41,6 +41,19 @@ class ClientTest < Minitest::Test
     @thread.join
   end
 
+  def test_optional_stream
+    email = { from: 'a@example.com', to: 'b@example.com', subject: 'Hi', text: 'Hello' }
+    @client.emails.send(email.merge(stream: 'receipts'))
+    @client.emails.send(email)
+    @client.emails.batch([email.merge(stream: 'receipts'), email.merge(stream: 'news'), email])
+    assert_equal 'receipts', JSON.parse(@requests[0][2])['stream']
+    refute JSON.parse(@requests[1][2]).key?('stream')
+    emails = JSON.parse(@requests[2][2])['emails']
+    assert_equal 'receipts', emails[0]['stream']
+    assert_equal 'news', emails[1]['stream']
+    refute emails[2].key?('stream')
+  end
+
   def test_null_recipient_id
     accepted = { status: 'accepted', message_id: 'order-1', recipients: [{ address: 'b@example.com', id: nil }] }
     @responses.concat([[202, { object: 'email' }.merge(accepted)],
@@ -83,7 +96,7 @@ class ClientTest < Minitest::Test
     assert_equal({ 'emails' => [{ 'to' => 'b' }] }, JSON.parse(@requests[1][2]))
     @requests.each do |_, headers, _|
       assert_equal 'Bearer ccm_test', headers['authorization']
-      assert_equal 'carriercrow-ruby/0.1.0', headers['user-agent']
+      assert_equal 'carriercrow-ruby/0.2.0', headers['user-agent']
     end
   end
 

@@ -46,6 +46,20 @@ final class ClientTest extends TestCase
         $state['responses'] = $responses;
         file_put_contents($this->state, json_encode($state));
     }
+    public function testOptionalStream(): void
+    {
+        $email = ['from' => 'a@example.com', 'to' => 'b@example.com', 'subject' => 'Hi', 'text' => 'Hello'];
+        $this->client->emails->send($email + ['stream' => 'receipts']);
+        $this->client->emails->send($email);
+        $this->client->emails->batch([$email + ['stream' => 'receipts'], $email + ['stream' => 'news'], $email]);
+        $requests = $this->state()['requests'];
+        self::assertSame('receipts', json_decode($requests[0]['body'], true)['stream']);
+        self::assertArrayNotHasKey('stream', json_decode($requests[1]['body'], true));
+        $emails = json_decode($requests[2]['body'], true)['emails'];
+        self::assertSame('receipts', $emails[0]['stream']);
+        self::assertSame('news', $emails[1]['stream']);
+        self::assertArrayNotHasKey('stream', $emails[2]);
+    }
     public function testNullRecipientId(): void
     {
         $accepted = ['status' => 'accepted', 'message_id' => 'order-1', 'recipients' => [['address' => 'b@example.com', 'id' => null]]];
@@ -90,7 +104,7 @@ final class ClientTest extends TestCase
         self::assertSame(['emails' => [['to' => 'b']]], json_decode($requests[1]['body'], true));
         foreach ($requests as $r) {
             self::assertSame('Bearer ccm_test', $r['headers']['authorization']);
-            self::assertSame('carriercrow-php/0.1.0', $r['headers']['user-agent']);
+            self::assertSame('carriercrow-php/0.2.0', $r['headers']['user-agent']);
         }
     }
     public function testError(): void

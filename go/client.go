@@ -17,7 +17,7 @@ import (
 	"time"
 )
 
-const Version = "0.1.0"
+const Version = "0.2.0"
 const DefaultBaseURL = "https://api.mta.carriercrow.com"
 
 // Error carries API failures and local/network failures (Status zero).

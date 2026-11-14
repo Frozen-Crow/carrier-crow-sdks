@@ -352,7 +352,7 @@ func TestReviewDefaultsAndMissingKey(t *testing.T) {
 	t.Setenv("CARRIERCROW_API_KEY", "")
 	calls := 0
 	c := New("", Options{HTTPClient: &http.Client{Transport: transport(func(*http.Request) (*http.Response, error) { calls++; return nil, io.ErrUnexpectedEOF })}})
-	if Version != "0.1.0" || c.retries != 2 || c.maxRetryAfter != 60*time.Second {
+	if Version != "0.2.0" || c.retries != 2 || c.maxRetryAfter != 60*time.Second {
 		t.Fatal(c, Version)
 	}
 	v, err := c.Domains.List(context.Background())
@@ -503,5 +503,47 @@ func TestRecipientRefusalField(t *testing.T) {
 	}
 	if calls != 1 {
 		t.Fatal(calls)
+	}
+}
+
+func TestOptionalStream(t *testing.T) {
+	var bodies []map[string]any
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Error(err)
+		}
+		bodies = append(bodies, body)
+		io.WriteString(w, `{}`)
+	}))
+	defer server.Close()
+	client := New("ccm_test", Options{BaseURL: server.URL})
+	ctx := context.Background()
+	email := SendEmail{From: "a@example.com", To: Addresses{"b@example.com"}, Subject: "Hi", Text: "Hello"}
+	receipt := email
+	receipt.Stream = "receipts"
+	news := email
+	news.Stream = "news"
+	if _, err := client.Emails.Send(ctx, receipt, SendOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := client.Emails.Send(ctx, email, SendOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := client.Emails.Batch(ctx, []SendEmail{receipt, news, email}, SendOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	if bodies[0]["stream"] != "receipts" {
+		t.Fatal(bodies[0])
+	}
+	if _, ok := bodies[1]["stream"]; ok {
+		t.Fatal(bodies[1])
+	}
+	emails := bodies[2]["emails"].([]any)
+	if emails[0].(map[string]any)["stream"] != "receipts" || emails[1].(map[string]any)["stream"] != "news" {
+		t.Fatal(emails)
+	}
+	if _, ok := emails[2].(map[string]any)["stream"]; ok {
+		t.Fatal(emails[2])
 	}
 }
