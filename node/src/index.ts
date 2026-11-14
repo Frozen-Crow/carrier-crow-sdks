@@ -12,7 +12,7 @@ import type {
   WebhookBody,
 } from "./models.js";
 export * from "./models.js";
-export const VERSION = "0.1.0";
+export const VERSION = "0.2.0";
 export class CarrierCrowError extends Error {
   constructor(
     message: string,

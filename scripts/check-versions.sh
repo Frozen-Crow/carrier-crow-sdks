@@ -22,6 +22,7 @@ found python/pyproject.toml "$(sed -nE 's/^version = "([^"]+)".*/\1/p' python/py
 found python/src/carriercrow/__init__.py "$(sed -nE 's/^__version__ = "([^"]+)".*/\1/p' python/src/carriercrow/__init__.py)"
 found ruby/carriercrow.gemspec "$(sed -nE "s/^  s\.version = '([^']+)'.*/\1/p" ruby/carriercrow.gemspec)"
 found ruby/lib/carriercrow.rb "$(sed -nE "s/^  VERSION = '([^']+)'.*/\1/p" ruby/lib/carriercrow.rb)"
+found php/composer.json "$(node -p 'require("./php/composer.json").version')"
 found php/src/CarrierCrow.php "$(sed -nE "s/^    public const VERSION = '([^']+)'.*/\1/p" php/src/CarrierCrow.php)"
 found go/client.go "$(sed -nE 's/^const Version = "([^"]+)".*/\1/p' go/client.go)"
 exit $status

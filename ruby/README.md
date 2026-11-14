@@ -45,6 +45,13 @@ end
 Responses are parsed Ruby hashes with string keys. Batch wraps the supplied
 array as `{"emails": [...]}`; individual rejections remain in `results`.
 
+Choose a stream by adding its name to the send body (`stream: 'receipts'`) or to each email
+body passed to batch. It is sent as the JSON field `stream`; omit it to use
+the app's stream. Each batch email may select a different stream. A stream
+outside the app's sender returns HTTP 422 with `code: "invalid_stream"` and
+`field: "stream"`; in a batch, inspect the individual rejected result's
+`code` and `field`.
+
 ## Read and page emails
 
 ```ruby
@@ -94,7 +101,7 @@ Client options are `base_url`, `retries` (default 2 additional attempts),
 `sleeper` callable. Reads and domain checks retry 429, 503, and network failures
 with exponential backoff and jitter, honoring a numeric `Retry-After` minimum.
 Other HTTP failures are raised immediately. Every request sends
-`User-Agent: carriercrow-ruby/0.1.0` and bearer authentication.
+`User-Agent: carriercrow-ruby/0.2.0` and bearer authentication.
 
 Sends and batches without a key make exactly one attempt, even when client
 retries are configured. A supplied `idempotency_key` enables the client retry

@@ -10,7 +10,7 @@ use GuzzleHttp\Exception\TransferException;
 
 class CarrierCrow
 {
-    public const VERSION = '0.1.0';
+    public const VERSION = '0.2.0';
     public readonly Emails $emails;
     public readonly Domains $domains;
     public readonly Webhooks $webhooks;

@@ -18,6 +18,7 @@ export interface SendEmail {
   message_id?: string;
   subscriber?: string;
   campaign?: string;
+  stream?: string;
   app?: string;
 }
 export interface Recipient {
@@ -51,6 +52,7 @@ export type ErrorCode =
   | "idempotency_conflict"
   | "too_large"
   | "rejected"
+  | "invalid_stream"
   | "rate_limited"
   | "unavailable";
 export interface ErrorBody {

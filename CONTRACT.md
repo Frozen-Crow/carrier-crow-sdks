@@ -64,6 +64,7 @@ stable; `field` is present when one input is at fault. Codes:
 | 409 | `idempotency_conflict` | Same `Idempotency-Key`, different body |
 | 413 | `too_large` | Message over 10 MB after encoding |
 | 422 | `rejected` | The sending node refused the message (5xx at submission); `error` carries the node's reason in words |
+| 422 | `invalid_stream` | Stream does not belong to the app's sender (`field: "stream"`) |
 | 429 | `rate_limited` | The app's hourly limit, or the node said 4xx try later. `Retry-After` header in seconds |
 | 503 | `unavailable` | Sending over the API isn't configured, or no node answered. `Retry-After` set |
 
@@ -88,6 +89,7 @@ Body:
 | `message_id` | string | your ID for the email, sent as `X-CC-Message-Id`, max 255 |
 | `subscriber` | string | your ID for the recipient, sent as `X-CC-Subscriber`, max 255 |
 | `campaign` | string | sent as `X-CC-Campaign`: 1–128 of `A-Za-z0-9_.-`, starting with a letter or digit |
+| `stream` | string | optional; defaults to the app's stream. Must belong to the app's sender; otherwise `422` with `code: "invalid_stream"`, `field: "stream"` |
 | `app` | string | the app's name. Required for OAuth tokens, optional for bound keys |
 
 `202 Accepted`:
@@ -130,6 +132,9 @@ for the whole batch. `200`:
   { "index": 1, "status": "rejected", "error": "…", "code": "invalid_request", "field": "to" }
 ] }
 ```
+
+Each email may specify its own `stream`; omission uses the app's stream.
+An invalid stream rejects that item with `code: "invalid_stream"` and `field: "stream"`.
 
 One bad email doesn't stop the others. A malformed batch as a whole (not an
 array, more than 100) is a `400`.

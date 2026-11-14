@@ -39,6 +39,13 @@ responses retain the contract's wire names: send uses `reply_to` / `message_id`,
 reads use `messageId`, `firstAt`, and `bounceClass`. TypedDict models are in
 `carriercrow.models` and the package includes `py.typed`.
 
+Choose a stream by adding its name to the send body (`"stream": "receipts"`) or to each email
+body passed to batch. It is sent as the JSON field `stream`; omit it to use
+the app's stream. Each batch email may select a different stream. A stream
+outside the app's sender returns HTTP 422 with `code: "invalid_stream"` and
+`field: "stream"`; in a batch, inspect the individual rejected result's
+`code` and `field`.
+
 Reads and DNS checks retry network errors, 429, and 503 up to `max_retries=2`
 with exponential backoff and jitter. `Retry-After` seconds is a minimum delay. If it exceeds `max_retry_after`
 (default 60 seconds), retries stop and the error preserves `retry_after`.

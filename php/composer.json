@@ -1,5 +1,6 @@
 {
     "name": "carriercrow/carriercrow",
+    "version": "0.2.0",
     "description": "Carrier Crow email API client",
     "license": "MIT",
     "keywords": [
