@@ -25,7 +25,6 @@ type Attachment struct {
 	ContentType string `json:"content_type,omitempty"`
 }
 type SendEmail struct {
-	Stream      string            `json:"stream,omitempty"`
 	From        string            `json:"from"`
 	To          Addresses         `json:"to"`
 	CC          Addresses         `json:"cc,omitempty"`
@@ -39,6 +38,7 @@ type SendEmail struct {
 	MessageID   string            `json:"message_id,omitempty"`
 	Subscriber  string            `json:"subscriber,omitempty"`
 	Campaign    string            `json:"campaign,omitempty"`
+	Stream      string            `json:"stream,omitempty"`
 	App         string            `json:"app,omitempty"`
 }
 type Recipient struct {

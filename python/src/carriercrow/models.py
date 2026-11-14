@@ -23,7 +23,6 @@ SendRequired = TypedDict("SendRequired", {"from": str, "to": Addresses, "subject
 
 
 class SendEmail(SendRequired, total=False):
-    stream: str
     cc: Addresses
     bcc: Addresses
     reply_to: Addresses
@@ -34,6 +33,7 @@ class SendEmail(SendRequired, total=False):
     message_id: str
     subscriber: str
     campaign: str
+    stream: str
     app: str
 
 

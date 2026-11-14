@@ -223,7 +223,7 @@ components:
         error: { type: string, description: 'What went wrong and what to send instead, in a sentence' }
         code:
           type: string
-          enum: [invalid_stream, invalid_request, unauthorized, forbidden, app_mismatch, not_found, idempotency_conflict, too_large, rejected, rate_limited, unavailable]
+          enum: [invalid_request, unauthorized, forbidden, app_mismatch, not_found, idempotency_conflict, too_large, rejected, invalid_stream, rate_limited, unavailable]
         field: { type: string, description: 'The input at fault, e.g. to[2]' }
 
     Addresses:
@@ -253,8 +253,8 @@ components:
           items: { $ref: '#/components/schemas/Attachment' }
         message_id: { type: string, maxLength: 255, description: 'Your ID for this email (X-CC-Message-Id)' }
         subscriber: { type: string, maxLength: 255, description: 'Your ID for the recipient (X-CC-Subscriber)' }
-        stream: { type: string, description: "Optional stream belonging to the app sender; defaults to the app stream. Invalid selections return 422 invalid_stream with field stream." }
         campaign: { type: string, pattern: '^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$', description: 'Groups emails in reports (X-CC-Campaign)' }
+        stream: { type: string, description: "Optional stream belonging to the app sender; defaults to the app stream. Invalid selections return 422 invalid_stream with field stream." }
         app: { type: string, description: 'The app that sends it. Required with an OAuth token' }
       description: At least one of html or text. Up to 50 recipients across to, cc and bcc.
 

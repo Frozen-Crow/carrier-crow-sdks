@@ -5,7 +5,6 @@ export interface Attachment {
   content_type?: string;
 }
 export interface SendEmail {
-  stream?: string;
   from: string;
   to: Addresses;
   subject: string;
@@ -19,6 +18,7 @@ export interface SendEmail {
   message_id?: string;
   subscriber?: string;
   campaign?: string;
+  stream?: string;
   app?: string;
 }
 export interface Recipient {
@@ -44,7 +44,6 @@ export interface BatchResponse {
   results: BatchResult[];
 }
 export type ErrorCode =
-  | "invalid_stream"
   | "invalid_request"
   | "unauthorized"
   | "forbidden"
@@ -53,6 +52,7 @@ export type ErrorCode =
   | "idempotency_conflict"
   | "too_large"
   | "rejected"
+  | "invalid_stream"
   | "rate_limited"
   | "unavailable";
 export interface ErrorBody {

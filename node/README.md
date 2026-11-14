@@ -48,6 +48,13 @@ for (const result of batch.results) {
 
 Use at least one of `html` or `text`, at most 50 recipients across `to`, `cc` and `bcc`, and at most 100 messages in a batch. Attachments contain base64, with a 10 MB encoded message limit. Custom headers cannot override From, To, Cc, Bcc, Subject, Reply-To, Message-ID, Date, MIME-Version, Content-* or X-CC-*.
 
+Choose a stream by adding its name to the send body (`stream: "receipts"`) or to each email
+body passed to batch. It is sent as the JSON field `stream`; omit it to use
+the app's stream. Each batch email may select a different stream. A stream
+outside the app's sender returns HTTP 422 with `code: "invalid_stream"` and
+`field: "stream"`; in a batch, inspect the individual rejected result's
+`code` and `field`.
+
 ## Read emails and page results
 
 ```ts
@@ -120,10 +127,3 @@ Builds emit `dist/esm` and `dist/cjs`, each with declarations. Tests use Node's 
 A 202 means every recipient was accepted, including when an ID is null.
 A refused recipient fails the send with 422 or 429 and an indexed `field`
 such as `to[1]`; no recipients were sent.
-
-Set the optional stream string in the send body (`stream: "receipts"`) or in each email
-body passed to batch. It is sent as the JSON field `stream`; omit it to use
-the app's stream. Each batch email may select a different stream. A stream
-outside the app's sender returns HTTP 422 with `code: "invalid_stream"` and
-`field: "stream"`; in a batch, inspect the individual rejected result's
-`code` and `field`.

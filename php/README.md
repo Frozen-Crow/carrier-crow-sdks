@@ -67,6 +67,13 @@ $domain = $cc->domains->get('domain-id');
 $checked = $cc->domains->check('domain-id');
 ```
 
+Choose a stream by adding its name to the send body (`'stream' => 'receipts'`) or to each email
+body passed to batch. It is sent as the JSON field `stream`; omit it to use
+the app's stream. Each batch email may select a different stream. A stream
+outside the app's sender returns HTTP 422 with `code: "invalid_stream"` and
+`field: "stream"`; in a batch, inspect the individual rejected result's
+`code` and `field`.
+
 Reads and domain checks retry network errors, HTTP 429 and 503 twice by default, using exponential backoff with jitter and respecting numeric `Retry-After` seconds. Configure the retry count with the client `retries` option. Sends and batches never retry without an idempotency key, regardless of the client retry setting. Explicitly opt in per send to generate a key once and reuse it with the identical request body:
 
 ```php
@@ -109,10 +116,3 @@ Missing API keys raise `missing_api_key` at construction. `maxRetryAfter` defaul
 A 202 means every recipient was accepted, including when an ID is null.
 A refused recipient fails the send with 422 or 429 and an indexed `field`
 such as `to[1]`; no recipients were sent.
-
-Set the optional stream string in the send body (`'stream' => 'receipts'`) or in each email
-body passed to batch. It is sent as the JSON field `stream`; omit it to use
-the app's stream. Each batch email may select a different stream. A stream
-outside the app's sender returns HTTP 422 with `code: "invalid_stream"` and
-`field: "stream"`; in a batch, inspect the individual rejected result's
-`code` and `field`.
